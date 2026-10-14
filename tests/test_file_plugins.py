@@ -60,6 +60,46 @@ def test_session_opens_plain_normalized_variant_with_correct_axes(tmp_path):
     json.dumps(result, allow_nan=False)
 
 
+def test_mistral_reader_closes_file_when_dataset_is_malformed(tmp_path, monkeypatch):
+    from mantis_xray.core.session import Session
+    path = tmp_path / 'broken.hdf5'
+    write_stack(path, 'spectroscopy_normalized')
+    with h5py.File(path, 'r+') as file:
+        del file['SpecNormalized/x_pixel_size']
+        file.create_dataset('SpecNormalized/x_pixel_size', data=[])
+    opened = []
+    real_file = h5py.File
+
+    def tracked_file(*args, **kwargs):
+        handle = real_file(*args, **kwargs)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(h5py, 'File', tracked_file)
+    with pytest.raises((IndexError, ValueError)):
+        Session().open(path)
+    assert opened
+    assert all(not handle.id.valid for handle in opened)
+
+
+def test_mistral_probe_closes_file_on_malformed_structure(tmp_path, monkeypatch):
+    path = tmp_path / 'malformed.hdf5'
+    with h5py.File(path, 'w') as file:
+        file.create_dataset('SpecNormalized', data=1)
+    opened = []
+    real_file = h5py.File
+
+    def tracked_file(*args, **kwargs):
+        handle = real_file(*args, **kwargs)
+        opened.append(handle)
+        return handle
+
+    monkeypatch.setattr(h5py, 'File', tracked_file)
+    assert mistral.identify(str(path)) is False
+    assert mistral.GetFileStructure(str(path)) is None
+    assert opened and all(not handle.id.valid for handle in opened)
+
+
 def test_missing_required_dataset_is_not_claimed(tmp_path):
     path = tmp_path / "broken.hdf5"
     with h5py.File(path, "w") as f:

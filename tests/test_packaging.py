@@ -18,6 +18,9 @@ def project():
 def test_single_python_distribution_provides_library_engine_and_cli():
     metadata = project()
     assert metadata['name'] == 'mantis-xray'
+    assert metadata['requires-python'] == '>=3.12,<3.13'
+    assert (ROOT / '.python-version').read_text().strip() == '3.12'
+    assert 'include .python-version uv.lock' in (ROOT / 'MANIFEST.in').read_text()
     scripts = metadata['scripts']
     assert scripts['mantis-xray'] == 'mantis_xray.cli:main'
     assert scripts['mantis'] == 'mantis_xray.cli:main'

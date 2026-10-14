@@ -13,18 +13,18 @@ One Python distribution installs a library, three console scripts (`mantis-xray`
 
 The GUI is a **fully separate product**. It must not discover `mantis-xray` via `$PATH`, import `mantis_xray`, or use the user's Python environment. Its engine is `Mantis.app/Contents/Resources/engine/mantis-engine`, a frozen copy bundled inside the app. GUI updates replace the app **and that private engine only**; CLI upgrades happen in a separate Python environment and cannot replace the engine inside the app, and replacing the app cannot change the Python distribution. The core is shared **source**, not shared mutable installation state.
 
-> **Name collision to keep in mind.** This distribution is named `mantis-xray`, the same name and the same `3.3.0` version as the historical Qt-based release on PyPI. Always install from this checkout (`pip install -e .`); a bare `pip install mantis-xray` would fetch the upstream Qt package instead of this code.
+> **Name collision to keep in mind.** This distribution is named `mantis-xray`, the same name and the same `3.3.0` version as the historical Qt-based release on PyPI. Use `uv sync --locked --python 3.12 --all-extras` from this checkout; installing a bare `mantis-xray` requirement would fetch the upstream Qt package instead of this code.
 
 JSON Lines protocol version **1** is independent of GUI and Python versions. A handshake checks protocol and enumerates supported operations. Breaking protocol changes require a new protocol version and compatibility handling, not equality of product version strings. See [wire contract](native-contract.md).
 
 ## Installation and CLI usage
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev,xrm,netCDF]'
-.venv/bin/mantis-xray --help
-.venv/bin/mantis-xray inspect /absolute/path/stack.npz
-.venv/bin/mantis-xray analyze /absolute/path/stack.npz --pre-normalized \
+uv python install 3.12
+uv sync --locked --python 3.12 --all-extras
+uv run --locked --all-extras mantis-xray --help
+uv run --locked --all-extras mantis-xray inspect /absolute/path/stack.npz
+uv run --locked --all-extras mantis-xray analyze /absolute/path/stack.npz --pre-normalized \
   --components 3 --clusters 4 --seed 0 --output /absolute/path/results.npz
 ```
 
@@ -32,7 +32,7 @@ python3 -m venv .venv
 
 Scripted use can equally import the library (`from mantis_xray.core.session import Session`) or speak the JSON-lines protocol through `mantis-engine`; all three entry points share one implementation.
 
-`mantis-xray batch settings.txt` and `python -m mantis_xray --batch settings.txt` translate the legacy settings format into shared-core operations. Settings are strictly validated (unknown keys fail instead of being ignored); relative paths are resolved against the settings file's directory. Legacy image export filenames/layouts are not a byte-for-byte compatibility promise. `python -m mantis_xray` runs this CLI directly; it no longer starts a GUI.
+`mantis-xray batch settings.txt` and `python -m mantis_xray --batch settings.txt` translate the legacy settings format into shared-core operations. Settings are strictly validated (unknown keys fail instead of being ignored); relative paths are resolved against the settings file's directory. Legacy image export filenames/layouts are not a byte-for-byte compatibility promise. With the default settings only `<WORK_DIR>/<OUTPUT_DIR_NAME>/<input-stem>_analysis.png` is saved; set `SAVE_HDF5: 1` to retain full-resolution numeric data/PCA/clustering results in `<input-stem>_analysis.hdf5`. PNG/PDF/SVG exports are preview images, not substitutes for the numeric export. `python -m mantis_xray` runs this CLI directly; it no longer starts a GUI.
 
 Pipelines expose all engine operations without growing coupled frontend logic:
 
@@ -49,7 +49,7 @@ Pipelines expose all engine operations without growing coupled frontend logic:
 }
 ```
 
-Run `.venv/bin/mantis-xray pipeline pipeline.json`. Relative input/output paths are relative to the pipeline file, not shell working directory. stdout is machine-readable JSON; diagnostic output is stderr. A failed step exits nonzero; earlier successful exports are not rolled back. Exporting over the input is forbidden; replacing another existing output requires an explicit `overwrite` parameter.
+Run `uv run --locked --all-extras mantis-xray pipeline pipeline.json`. Relative input/output paths are relative to the pipeline file, not shell working directory. Intermediate arrays remain in memory until an explicit `export` step; exported numeric arrays are full resolution, whereas graphics are preview figures. Parent directories are created on export. Formats must match suffixes (`npz`→`.npz`, `hdf5`→`.h5`/`.hdf`/`.hdf5`, graphics/CSV their matching suffix); paths/filenames are otherwise chosen by the caller. stdout is machine-readable JSON (the last snapshot plus `exported_paths` in execution order); diagnostic output is stderr. A failed step exits nonzero and lists earlier successful exports on stderr; earlier successful exports are not rolled back. Exporting over any input read in the current run (including datasets, I0/reference files, workflow/settings files) is forbidden; replacing another existing output requires an explicit `overwrite` parameter (`false` by default). An existing destination remains intact on a failed export; neither a run-level manifest nor a separate intermediate-data directory is created.
 
 ## Standalone native app
 
@@ -81,7 +81,7 @@ Nothing is written into the source tree except deliverables:
 
 | Path | Contents | Reproducible |
 |---|---|---|
-| `dist/python/` | `mantis-xray` wheel and sdist (`python -m build --outdir dist/python .`) | yes, delete anytime |
+| `dist/python/` | `mantis-xray` wheel and sdist (`uv build --out-dir dist/python`) | yes, delete anytime |
 | `dist/GUI/` | `Mantis.app`, `Mantis-<version>-arm64.dmg`, its `.sha256` | yes, rebuilt by `scripts/build_gui.sh` |
 | temporary `mantis-gui-build.*` | PyInstaller work/dist/spec, DMG staging | removed by the build script on exit |
 
@@ -95,4 +95,4 @@ Nothing is written into the source tree except deliverables:
 - Display images may be downsampled; numerical exports must retain full-resolution arrays. Display contrast does not change analyzed data.
 - The old Qt interface remains recoverable from Git history at `021e1af`; it is not shipped as an optional fallback in the migrated distribution. A convenience copy of it, the historical Qt user guide and its screenshots live in the untracked `old/` directory.
 - Synthetic fixtures are software tests, not evidence of correctness on all beamline formats or experimental datasets. Facility-specific formats, large 4D workloads and interactive parity require explicit acceptance records; passing unit tests alone is not a blanket scientific validation.
-- Verified in this migration: 102 Python tests (core, session, service, advanced workflows, CLI, packaging), 17 Swift tests, a single `mantis-xray` wheel carrying library + engine + CLI with no Qt or Swift content and all three console scripts, an ad-hoc-signed arm64 app, a frozen-engine smoke test covering `png`/`pdf`/`svg` exports, and one GUI run of the real window plus private engine (`open` → `pca` → numeric export) under `env -i`. Interactive acceptance of every panel, facility file formats, large 4D tomographic workloads, and Developer ID signing/notarization remain untested.
+- Verified in the initial migration: 102 Python tests (core, session, service, advanced workflows, CLI, packaging), 17 Swift tests, a single `mantis-xray` wheel carrying library + engine + CLI with no Qt or Swift content and all three console scripts, an ad-hoc-signed arm64 app, a frozen-engine smoke test covering `png`/`pdf`/`svg` exports, and one GUI run of the real window plus private engine (`open` → `pca` → numeric export) under `env -i`. These counts describe the original migration, not the current suite. Interactive acceptance of every panel, facility file formats, large 4D tomographic workloads, and Developer ID signing/notarization remain untested.

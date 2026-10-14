@@ -91,6 +91,7 @@ class Session:
         self.analysis = analyze.analyze(self.stack)
         self.source = ""
         self._source_paths = []
+        self._protected_paths = set()
         self.history = []
         self.results = {}
         self.normalized = False
@@ -103,6 +104,10 @@ class Session:
 
     def record(self, method, params):
         self.history.append({"method": method, "params": copy.deepcopy(params)})
+
+    def protect_inputs(self, paths):
+        """Protect workflow/settings files in addition to the loaded scientific inputs."""
+        self._protected_paths.update(Path(path).expanduser().resolve() for path in paths)
 
     def require_data(self):
         if not self.source:
@@ -121,6 +126,14 @@ class Session:
         with redirect_stdout(sys.stderr):
             if method in ADVANCED_METHODS:
                 self.require_data()
+                # Reserve reference inputs before analysis: even a failed fit must
+                # not allow a later export to replace a file already read.
+                paths = params.get("paths", [])
+                if isinstance(paths, list):
+                    self.protect_inputs(path for path in paths if isinstance(path, str) and path)
+                path = params.get("path")
+                if isinstance(path, str) and path:
+                    self.protect_inputs((path,))
                 return dispatch_advanced(self, method, params)
             if method not in BASE_METHODS:
                 raise SessionError(f"Unknown method: {method}", "unknown_method")
@@ -263,6 +276,7 @@ class Session:
                   "sha256": [_hash(path) for path in files]}
         self.stack, self.source = stack, str(files[0])
         self._source_paths = files
+        self._protected_paths.update(files)
         self.history, self.results = [], {}
         self.normalized, self.display = False, "intensity"
         self.energy_index = self.selected_x = self.selected_y = 0
@@ -346,6 +360,7 @@ class Session:
         self.stack = stack
         self.source = str(path)
         self._source_paths = [path]
+        self._protected_paths.add(path)
         self.analysis = analyze.analyze(stack)
         self.history, self.results = [], {}
         self.normalized = pre_normalized or embedded_od is not None or embedded_i0 is not None
@@ -435,6 +450,8 @@ class Session:
             trial.calculate_optical_density()
             trial.fill_h5_struct_normalization()
         self.stack = trial
+        if mode == "file":
+            self._protected_paths.add(Path(params["path"]))
         self.normalized = True
         self._invalidate()
         self.display = "od"
@@ -658,14 +675,18 @@ class Session:
         import tempfile
         target = Path(path).expanduser().resolve()
         if any(target == source or (target.exists() and source.is_file() and os.path.samefile(target, source))
-               for source in self._source_paths):
+               for source in self._protected_paths):
             raise SessionError("Cannot overwrite an input file")
         if format not in ("hdf5", "npz", "csv", "png", "pdf", "svg"):
             raise SessionError(f"Unsupported export format: {format}", "unsupported_format")
+        suffixes = {"hdf5": {".h5", ".hdf5", ".hdf"}, "npz": {".npz"},
+                    "csv": {".csv"}, "png": {".png"}, "pdf": {".pdf"}, "svg": {".svg"}}
+        if target.suffix.lower() not in suffixes[format]:
+            raise SessionError(f"Export format {format} does not match destination suffix {target.suffix or '(none)'}")
         if type(overwrite) is not bool:
             raise SessionError("overwrite must be boolean")
         if target.exists() and not overwrite:
-            raise SessionError("Destination exists; set overwrite=true explicitly", "file_exists")
+            raise SessionError(f"Destination exists: {target}; set overwrite=true explicitly", "file_exists")
         target.parent.mkdir(parents=True, exist_ok=True)
         history = self.history + [{"method": "export", "params": {"path": str(target), "format": format, "overwrite": overwrite}}]
         view = self._last_snapshot or self.snapshot()

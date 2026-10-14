@@ -10,6 +10,7 @@ from pathlib import Path
 import sys
 
 from . import __version__
+from .service import _reject_constant, _unique_object
 
 
 def validate_pipeline(document):
@@ -24,32 +25,64 @@ def validate_pipeline(document):
     for step in steps:
         if not isinstance(step, dict) or set(step) - {"method", "params"}:
             raise ValueError("Each step must contain method and params only")
-        if not isinstance(step.get("method"), str) or not isinstance(step.get("params", {}), dict):
-            raise ValueError("Step method must be a string and params an object")
+        if not isinstance(step.get("method"), str) or not step["method"] or not isinstance(step.get("params", {}), dict):
+            raise ValueError("Step method must be a non-empty string and params an object")
     if steps[0]["method"] not in {"open", "build_stack"}:
         raise ValueError("The first step must open a dataset or build_stack")
     return steps
 
 
-def execute_pipeline(document, base):
+def _resolve_path(value, base):
+    if not isinstance(value, str) or not value.strip() or "\0" in value:
+        raise ValueError("path must be a non-empty string without NUL bytes")
+    path = Path(value).expanduser()
+    return str(path if path.is_absolute() else base / path)
+
+
+def execute_pipeline(document, base, protected_paths=()):
     steps = validate_pipeline(document)
     with redirect_stdout(sys.stderr):
         from mantis_xray.core.session import Session
         session = Session()
+        # Reserve existing scientific inputs (including files used by later steps)
+        # before any export can replace them. New outputs can still feed later steps.
+        inputs = list(protected_paths)
+        outputs = set()
+        for step in steps:
+            params = step.get("params", {})
+            if step["method"] == "export":
+                if isinstance(params.get("path"), str) and params["path"]:
+                    outputs.add(Path(_resolve_path(params["path"], base)).resolve())
+                continue
+            values = ([params["path"]] if isinstance(params.get("path"), str) else [])
+            if isinstance(params.get("paths"), list):
+                values.extend(path for path in params["paths"] if isinstance(path, str))
+            for value in values:
+                if value and value.strip() and "\0" not in value:
+                    candidate = Path(_resolve_path(value, base)).resolve()
+                    if candidate.is_file() or candidate not in outputs:
+                        inputs.append(candidate)
+        session.protect_inputs(inputs)
         result = None
+        exported_paths = []
         for index, step in enumerate(steps):
-            params = dict(step.get("params", {}))
-            for name in ("path",):
-                if params.get(name):
-                    p = Path(params[name]).expanduser()
-                    params[name] = str(p if p.is_absolute() else base / p)
-            if "paths" in params:
-                params["paths"] = [str(p if p.is_absolute() else base / p)
-                                   for p in map(Path, params["paths"])]
             try:
+                params = dict(step.get("params", {}))
+                if "path" in params:
+                    params["path"] = _resolve_path(params["path"], base)
+                if "paths" in params:
+                    if not isinstance(params["paths"], list) or any(
+                            not isinstance(path, str) or not path for path in params["paths"]):
+                        raise ValueError("paths must be a list of non-empty file paths")
+                    params["paths"] = [_resolve_path(path, base) for path in params["paths"]]
                 result = session.dispatch(step["method"], params)
+                if step["method"] == "export":
+                    exported_paths.append(result["exported_path"])
             except Exception as exc:
-                raise ValueError(f"Step {index + 1} ({step['method']}): {exc}") from exc
+                completed = f"; completed exports: {exported_paths}" if exported_paths else ""
+                raise ValueError(f"Step {index + 1} ({step['method']}): {exc}{completed}") from exc
+    if result is not None:
+        result["exported_paths"] = exported_paths
     return result
 
 
@@ -75,6 +108,7 @@ def main(argv=None):
     analyze.add_argument("--seed", type=int, default=0)
     analyze.add_argument("--output", required=True)
     args = parser.parse_args(argv)
+    protected_paths = ()
     if args.batch and args.command:
         parser.error("--batch cannot be combined with a subcommand")
     try:
@@ -83,10 +117,14 @@ def main(argv=None):
             path = Path(args.batch or args.path).expanduser().resolve()
             document = to_pipeline(parse_settings(path), path.parent)
             base = path.parent
+            protected_paths = (path,)
         elif args.command == "pipeline":
             path = Path(args.path).expanduser().resolve()
-            document = json.loads(path.read_text())
+            document = json.loads(path.read_text(encoding="utf-8"),
+                                  object_pairs_hook=_unique_object, parse_constant=_reject_constant)
+            json.dumps(document, allow_nan=False)
             base = path.parent
+            protected_paths = (path,)
         elif args.command == "inspect":
             document = {"steps": [{"method": "open", "params": {"path": args.path, "pre_normalized": args.pre_normalized}}]}
             base = Path.cwd()
@@ -105,9 +143,9 @@ def main(argv=None):
         else:
             parser.print_help()
             return 0
-        result = execute_pipeline(document, base)
+        result = execute_pipeline(document, base, protected_paths)
         print(json.dumps(result, allow_nan=False))
         return 0
-    except (ValueError, OSError, RuntimeError, ImportError, TypeError, KeyError) as exc:
+    except (ValueError, OSError, RuntimeError, ImportError, TypeError, KeyError, UnicodeError) as exc:
         print(f"mantis-xray: {exc}", file=sys.stderr)
         return 1

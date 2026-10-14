@@ -890,9 +890,9 @@ class data:
         ny = shape[1]
 
         outofboundariesval = np.sum(image) / float(nx * ny)
-        shifted_img = scipy.ndimage.interpolation.shift(image, [xshift, yshift],
-                                                        mode='constant',
-                                                        cval=outofboundariesval)
+        shifted_img = scipy.ndimage.shift(image, [xshift, yshift],
+                                          mode='constant',
+                                          cval=outofboundariesval)
 
         return shifted_img
 
@@ -1034,7 +1034,7 @@ class data:
         n_rows = datadim[1].copy()
 
         Imean = np.zeros((n_cols, n_rows))
-        scipy.ndimage.filters.uniform_filter(image, size=nbox, output=Imean)
+        scipy.ndimage.uniform_filter(image, size=nbox, output=Imean)
 
         Imean2 = Imean ** 2
 

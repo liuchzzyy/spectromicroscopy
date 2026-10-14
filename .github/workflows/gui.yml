@@ -1,9 +1,9 @@
 name: Native macOS GUI (arm64 DMG)
 on:
   push:
-    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', '.github/workflows/gui.yml']
+    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', 'uv.lock', '.python-version', '.github/workflows/gui.yml']
   pull_request:
-    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', '.github/workflows/gui.yml']
+    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', 'uv.lock', '.python-version', '.github/workflows/gui.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -12,10 +12,12 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10
         with:
-          python-version: '3.12'
-      - run: python -m venv .venv && .venv/bin/python -m pip install '.[dev,xrm,netCDF]'
+          version: '0.12.23'
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --locked --python 3.12 --all-extras
       - run: swift test --package-path GUI -c release
       - run: bash scripts/build_gui.sh
       - uses: actions/upload-artifact@v4

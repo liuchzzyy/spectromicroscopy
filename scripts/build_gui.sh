@@ -11,7 +11,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 [[ "$(uname -m)" == arm64 ]] || { printf 'Apple Silicon builder required\n' >&2; exit 1; }
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
-[[ -x "$PYTHON" ]] || { printf 'Create .venv and install .[dev,xrm,netCDF] first\n' >&2; exit 1; }
+[[ -x "$PYTHON" ]] || { printf 'Run uv sync --locked --python 3.12 --all-extras first\n' >&2; exit 1; }
+[[ "$("$PYTHON" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" == "3.12" ]] || { printf 'Python 3.12 environment required\n' >&2; exit 1; }
+uv sync --locked --python 3.12 --all-extras --check
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/mantis-gui-build.XXXXXX")"
 trap 'rm -rf "$WORK"' EXIT
 export MPLBACKEND=Agg

@@ -69,18 +69,16 @@ def identify(filename):
         Boolean indicating if this plugin can read the file
     """
     try:
-        f = h5py.File(filename, "r")
-        # Check for SpecNormalized group with required datasets
-        if "SpecNormalized" in f:
-            grp = f["SpecNormalized"]
-            has_data = _data_key(grp) is not None
-            has_energy = "energy" in grp
-            has_pixel_size = "x_pixel_size" in grp and "y_pixel_size" in grp
-            f.close()
-            return has_data and has_energy and has_pixel_size
-        f.close()
-        return False
-    except:
+        with h5py.File(filename, "r") as f:
+            # Check for SpecNormalized group with required datasets
+            if "SpecNormalized" in f:
+                grp = f["SpecNormalized"]
+                has_data = _data_key(grp) is not None
+                has_energy = "energy" in grp
+                has_pixel_size = "x_pixel_size" in grp and "y_pixel_size" in grp
+                return has_data and has_energy and has_pixel_size
+            return False
+    except (OSError, KeyError, TypeError, ValueError):
         return False
 
 
@@ -95,38 +93,34 @@ def GetFileStructure(filename):
         OrderedDict containing file structure information with attributes
     """
     try:
-        f = h5py.File(filename, "r")
+        with h5py.File(filename, "r") as f:
+            # Check for SpecNormalized group
+            if "SpecNormalized" not in f:
+                return None
 
-        # Check for SpecNormalized group
-        if "SpecNormalized" not in f:
-            f.close()
-            return None
+            grp = f["SpecNormalized"]
+            D = OrderedDict()
+            D["SpecNormalized"] = OrderedDict()
 
-        grp = f["SpecNormalized"]
-        D = OrderedDict()
-        D["SpecNormalized"] = OrderedDict()
+            # Set attributes on the OrderedDict (GUI expects these as attributes)
+            D["SpecNormalized"].definition = "MISTRAL-ALBA"
+            D["SpecNormalized"].scan_type = "spectromicroscopy"
+            D["SpecNormalized"].norm_data = None
 
-        # Set attributes on the OrderedDict (GUI expects these as attributes)
-        D["SpecNormalized"].definition = "MISTRAL-ALBA"
-        D["SpecNormalized"].scan_type = "spectromicroscopy"
-        D["SpecNormalized"].norm_data = None
+            # Get data shape and axes
+            key = _data_key(grp)
+            if key is not None:
+                data = grp[key]
+                D["SpecNormalized"].data_shape = data.shape
+                D["SpecNormalized"].data_axes = ["energy", "y", "x"]
+            else:
+                D["SpecNormalized"].data_shape = None
+                D["SpecNormalized"].data_axes = None
 
-        # Get data shape and axes
-        key = _data_key(grp)
-        if key is not None:
-            data = grp[key]
-            D["SpecNormalized"].data_shape = data.shape
-            D["SpecNormalized"].data_axes = ["energy", "y", "x"]
-        else:
-            D["SpecNormalized"].data_shape = None
-            D["SpecNormalized"].data_axes = None
-
-        # Add a single channel entry (required by GUI)
-        D["SpecNormalized"]["data"] = OrderedDict()
-
-        f.close()
-        return D
-    except:
+            # Add a single channel entry (required by GUI)
+            D["SpecNormalized"]["data"] = OrderedDict()
+            return D
+    except (OSError, KeyError, TypeError, ValueError):
         return None
 
 
@@ -143,60 +137,55 @@ def read(filename, stack_object, selection=None, *args, **kwargs):
         None (following MANTiS plugin convention)
     """
     # Open HDF5 file
-    f = h5py.File(filename, "r")
+    with h5py.File(filename, "r") as f:
+        # Check for SpecNormalized group
+        if "SpecNormalized" not in f:
+            print("Error: SpecNormalized group not found in file")
+            return
 
-    # Check for SpecNormalized group
-    if "SpecNormalized" not in f:
-        print("Error: SpecNormalized group not found in file")
-        f.close()
-        return
+        grp = f["SpecNormalized"]
 
-    grp = f["SpecNormalized"]
+        # Read the main spectroscopy data
+        # MISTRAL format: (n_energy, y, x)
+        # MANTiS expects: (x, y, n_energy)
+        key = _data_key(grp)
+        if key is None:
+            print("Error: no normalized stack dataset found in file")
+            return
+        data = numpy.array(grp[key]).astype("float32")
+        stack_object.absdata = numpy.transpose(data, (2, 1, 0))
 
-    # Read the main spectroscopy data
-    # MISTRAL format: (n_energy, y, x)
-    # MANTiS expects: (x, y, n_energy)
-    key = _data_key(grp)
-    if key is None:
-        print("Error: no normalized stack dataset found in file")
-        f.close()
-        return
-    data = numpy.array(grp[key]).astype("float32")
-    stack_object.absdata = numpy.transpose(data, (2, 1, 0))
+        # Read energy values
+        stack_object.ev = numpy.array(grp["energy"])
+        stack_object.n_ev = len(stack_object.ev)
 
-    # Read energy values
-    stack_object.ev = numpy.array(grp["energy"])
-    stack_object.n_ev = len(stack_object.ev)
+        # Read pixel sizes (stored as arrays with shape (1,))
+        x_pixel_size = float(grp["x_pixel_size"][0])
+        y_pixel_size = float(grp["y_pixel_size"][0])
 
-    # Read pixel sizes (stored as arrays with shape (1,))
-    x_pixel_size = float(grp["x_pixel_size"][0])
-    y_pixel_size = float(grp["y_pixel_size"][0])
+        # Get image dimensions
+        stack_object.n_cols = stack_object.absdata.shape[0]
+        stack_object.n_rows = stack_object.absdata.shape[1]
 
-    # Get image dimensions
-    stack_object.n_cols = stack_object.absdata.shape[0]
-    stack_object.n_rows = stack_object.absdata.shape[1]
+        # Create spatial coordinate arrays (in micrometers)
+        stack_object.x_dist = numpy.linspace(0, stack_object.n_cols * x_pixel_size, num=stack_object.n_cols)
+        stack_object.y_dist = numpy.linspace(0, stack_object.n_rows * y_pixel_size, num=stack_object.n_rows)
 
-    # Create spatial coordinate arrays (in micrometers)
-    stack_object.x_dist = numpy.linspace(0, stack_object.n_cols * x_pixel_size, num=stack_object.n_cols)
-    stack_object.y_dist = numpy.linspace(0, stack_object.n_rows * y_pixel_size, num=stack_object.n_rows)
+        # Read exposure times (dwell times)
+        if "ExpTimes" in grp:
+            stack_object.data_dwell = numpy.array(grp["ExpTimes"])
+        else:
+            stack_object.data_dwell = numpy.ones(stack_object.n_ev)
 
-    # Read exposure times (dwell times)
-    if "ExpTimes" in grp:
-        stack_object.data_dwell = numpy.array(grp["ExpTimes"])
-    else:
-        stack_object.data_dwell = numpy.ones(stack_object.n_ev)
+        # Optional: Store ring current data
+        if "Currents" in grp:
+            currents = numpy.array(grp["Currents"])
+            # Data is already normalized, currents stored for reference
 
-    # Optional: Store ring current data
-    if "Currents" in grp:
-        currents = numpy.array(grp["Currents"])
-        # Data is already normalized, currents stored for reference
-
-    # Optional: Store rotation angle
-    if "rotation_angle" in grp:
-        rotation_angle = numpy.array(grp["rotation_angle"])
-        # Can be stored in metadata if needed
-
-    f.close()
+        # Optional: Store rotation angle
+        if "rotation_angle" in grp:
+            rotation_angle = numpy.array(grp["rotation_angle"])
+            # Can be stored in metadata if needed
 
     # Fill the HDF5 structure for MANTiS
     stack_object.fill_h5_struct_from_stk()

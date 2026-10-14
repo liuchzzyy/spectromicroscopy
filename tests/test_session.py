@@ -214,6 +214,35 @@ def test_exports_full_resolution_hdf5_npz_roundtrip_and_graphics(tmp_path):
         session.dispatch("export", {"path": str(path), "format": "npz", "overwrite": True})
 
 
+def test_reference_input_cannot_be_replaced_by_direct_session_export(tmp_path):
+    session = session_class()()
+    energies = np.linspace(280, 290, 11)
+    source, _, _ = fixture_file(tmp_path, data=np.ones((3, 3, 11)), energies=energies)
+    reference = tmp_path / "reference.csv"
+    np.savetxt(reference, np.column_stack((energies, np.linspace(0.2, 1.0, 11))), delimiter=",")
+    original = reference.read_bytes()
+    session.dispatch("open", {"path": str(source), "pre_normalized": True})
+    session.dispatch("spectral", {"paths": [str(reference)]})
+    with pytest.raises(ValueError, match="input"):
+        session.dispatch("export", {"path": str(reference), "format": "csv", "overwrite": True})
+    assert reference.read_bytes() == original
+
+
+def test_reference_input_is_protected_even_if_advanced_result_fails(tmp_path):
+    session = session_class()()
+    energies = np.linspace(280, 290, 11)
+    source, _, _ = fixture_file(tmp_path, data=np.ones((3, 3, 11)), energies=energies)
+    reference = tmp_path / "reference.csv"
+    np.savetxt(reference, np.column_stack((energies, np.zeros(11))), delimiter=",")
+    original = reference.read_bytes()
+    session.dispatch("open", {"path": str(source), "pre_normalized": True})
+    with pytest.raises(ValueError):
+        session.dispatch("spectral", {"paths": [str(reference)]})
+    with pytest.raises(ValueError, match="input"):
+        session.dispatch("export", {"path": str(reference), "format": "csv", "overwrite": True})
+    assert reference.read_bytes() == original
+
+
 def test_plugins_inspect_and_build_tiff_stack(tmp_path):
     from PIL import Image
     Session = session_class()

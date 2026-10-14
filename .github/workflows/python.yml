@@ -1,28 +1,27 @@
 name: Python distribution (library, engine and CLI)
 on:
   push:
-    paths: ['mantis_xray/**', 'tests/**', 'pyproject.toml', 'MANIFEST.in', 'pytest.ini', 'scripts/check_distributions.py', '.github/workflows/python.yml']
+    paths: ['mantis_xray/**', 'tests/**', 'pyproject.toml', 'uv.lock', '.python-version', 'MANIFEST.in', 'pytest.ini', 'scripts/check_distributions.py', '.github/workflows/python.yml']
   pull_request:
-    paths: ['mantis_xray/**', 'tests/**', 'pyproject.toml', 'MANIFEST.in', 'pytest.ini', 'scripts/check_distributions.py', '.github/workflows/python.yml']
+    paths: ['mantis_xray/**', 'tests/**', 'pyproject.toml', 'uv.lock', '.python-version', 'MANIFEST.in', 'pytest.ini', 'scripts/check_distributions.py', '.github/workflows/python.yml']
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   python:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10
         with:
-          python-version: ${{ matrix.python }}
-      - run: python -m pip install -e '.[dev,xrm,netCDF]'
-      - run: python -m pytest -q
-      - run: python -m build --outdir dist/python .
-      - run: python scripts/check_distributions.py
+          version: '0.12.23'
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --locked --python 3.12 --all-extras
+      - run: uv run --locked --all-extras pytest -q
+      - run: uv build --out-dir dist/python
+      - run: uv run --locked --all-extras python scripts/check_distributions.py
       - uses: actions/upload-artifact@v4
         with:
-          name: python-distribution-${{ matrix.python }}
+          name: python-distribution-3.12
           path: dist/python/*

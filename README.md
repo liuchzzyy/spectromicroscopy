@@ -22,14 +22,17 @@ published to PyPI or GitHub Releases. The upstream instructions below describe
 the historical 3.3.0 release, **not this source branch**.
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e '.[dev,xrm,netCDF]'
-.venv/bin/mantis-xray --help          # or: python -m mantis_xray --help
+uv python install 3.12
+uv sync --locked --python 3.12 --all-extras
+uv run --locked --all-extras mantis-xray --help    # or: uv run --locked python -m mantis_xray --help
 ```
 
 > The distribution keeps the name `mantis-xray`, which is also the name of the
-> historical PyPI Qt release: always install from this checkout rather than
-> `pip install mantis-xray`.
+> historical PyPI Qt release: always sync from this checkout rather than
+> installing the similarly named PyPI distribution. This branch targets Python 3.12;
+> `uv.lock` pins the resolved runtime and optional development/format dependencies.
+> Run tests with `uv run --locked --all-extras pytest -q`. The upstream instructions
+> below refer only to the historical release.
 
 ## Repository layout
 

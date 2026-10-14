@@ -1,7 +1,7 @@
 """Inspect the built wheel: one self-contained, Qt-free mantis-xray distribution.
 
 Run after building:
-    python -m build --outdir dist/python . && python scripts/check_distributions.py
+    uv build --out-dir dist/python && uv run --locked --all-extras python scripts/check_distributions.py
 """
 from pathlib import Path
 from email.parser import BytesParser
