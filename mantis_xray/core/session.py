@@ -1,0 +1,782 @@
+"""UI-independent scientific state, preserving MANTiS' [x,y,e] convention.
+
+Legacy numerical algorithms are deliberately reused; validation and transactional
+state boundaries belong here, not in either UI. Display arrays are never exports.
+"""
+from contextlib import redirect_stdout
+import copy
+import hashlib
+import json
+from pathlib import Path
+import sys
+from types import SimpleNamespace
+
+import numpy as np
+
+# Historical plugins print during discovery. Never pollute machine-readable output.
+with redirect_stdout(sys.stderr):
+    from ..analysis import data_stack, data_struct, analyze
+
+
+BASE_METHODS = ("open", "normalize", "pca", "cluster", "view", "crop", "dark",
+                "remove_image", "reset", "despike", "align", "export", "inspect_file", "build_stack")
+
+
+class SessionError(ValueError):
+    def __init__(self, message, code="invalid_request"):
+        super().__init__(message)
+        self.code = code
+
+
+def finite_array(value, name):
+    try:
+        array = np.asarray(value, dtype=float)
+    except (ValueError, TypeError) as exc:
+        raise SessionError(f"{name} must be numeric") from exc
+    if not np.all(np.isfinite(array)):
+        raise SessionError(f"{name} must contain only finite numbers")
+    return array
+
+
+def image_record(title, array_xy):
+    array = finite_array(array_xy, title)
+    if array.ndim != 2 or 0 in array.shape:
+        raise SessionError("An image must be a nonempty [x,y] matrix")
+    width, height = array.shape
+    # Nearest sampled preview only. No alteration of the numerical data.
+    xs = np.linspace(0, width - 1, min(width, 256), dtype=int)
+    ys = np.linspace(0, height - 1, min(height, 256), dtype=int)
+    preview = array[np.ix_(xs, ys)].T
+    return {"title": str(title), "width": len(xs), "height": len(ys),
+            "full_width": width, "full_height": height,
+            "values": preview.ravel().tolist()}
+
+
+def spectrum_record(name, x, y):
+    x, y = finite_array(x, "spectrum x"), finite_array(y, "spectrum y")
+    if x.ndim != 1 or y.shape != x.shape:
+        raise SessionError("Spectrum axes must be equal-length vectors")
+    return {"name": str(name), "x": x.tolist(), "y": y.tolist()}
+
+
+def _private_structure(cls):
+    # data_struct's legacy descriptors store values on the *class*, and nested
+    # instances are class attributes. deepcopy(h5()) is therefore NOT isolated.
+    node = SimpleNamespace()
+    for name, value in vars(cls).items():
+        if isinstance(value, data_struct.Descr):
+            setattr(node, name, None)
+        elif type(value).__module__ == data_struct.__name__:
+            setattr(node, name, _private_structure(type(value)))
+    return node
+
+
+def _new_stack():
+    stack = data_stack.data(_private_structure(data_struct.h5))
+    stack.new_data()
+    return stack
+
+
+def _hash(path):
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class Session:
+    def __init__(self):
+        self.stack = _new_stack()
+        self.analysis = analyze.analyze(self.stack)
+        self.source = ""
+        self._source_paths = []
+        self.history = []
+        self.results = {}
+        self.normalized = False
+        self.energy_index = self.selected_x = self.selected_y = 0
+        self.display = "intensity"
+        self.roi_mask = None
+        self._original = None
+        self._raw_original = None
+        self._last_snapshot = None
+
+    def record(self, method, params):
+        self.history.append({"method": method, "params": copy.deepcopy(params)})
+
+    def require_data(self):
+        if not self.source:
+            raise SessionError("Open a dataset first", "invalid_state")
+
+    def require_normalized(self):
+        self.require_data()
+        if not self.normalized:
+            raise SessionError("Normalize the dataset first", "invalid_state")
+
+    def dispatch(self, method, params=None):
+        params = {} if params is None else params
+        if not isinstance(params, dict):
+            raise SessionError("params must be an object")
+        from .advanced import ADVANCED_METHODS, dispatch_advanced
+        with redirect_stdout(sys.stderr):
+            if method in ADVANCED_METHODS:
+                self.require_data()
+                return dispatch_advanced(self, method, params)
+            if method not in BASE_METHODS:
+                raise SessionError(f"Unknown method: {method}", "unknown_method")
+            return getattr(self, method)(**params)
+
+    def _make_stack(self, values, energies, theta=None, x=None, y=None):
+        values, energies = finite_array(values, "data"), finite_array(energies, "energies")
+        if values.ndim not in (3, 4) or 0 in values.shape:
+            raise SessionError("Data must have nonempty shape [x,y,energy] or [x,y,energy,theta]")
+        if energies.ndim != 1 or len(energies) != values.shape[2]:
+            raise SessionError("energies must match the data energy dimension")
+        if len(np.unique(energies)) != len(energies):
+            raise SessionError("Duplicate energies are not supported; resolve them explicitly")
+        if len(energies) > 1 and np.any(np.diff(energies) <= 0):
+            raise SessionError("energies must be strictly increasing (no implicit reordering)")
+        stack = _new_stack()
+        stack.n_cols, stack.n_rows, stack.n_ev = values.shape[:3]
+        stack.ev = energies.copy()
+        stack.absdata = values[:, :, :, 0].copy() if values.ndim == 4 else values.copy()
+        if values.ndim == 4:
+            theta = finite_array(theta, "theta")
+            if theta.shape != (values.shape[3],):
+                raise SessionError("4D data requires an explicit theta vector")
+            stack.stack4D = values.copy()
+            stack.theta = theta.copy()
+            stack.n_theta = len(theta)
+        stack.x_dist = np.arange(stack.n_cols, dtype=float) if x is None else finite_array(x, "x").copy()
+        stack.y_dist = np.arange(stack.n_rows, dtype=float) if y is None else finite_array(y, "y").copy()
+        if stack.x_dist.shape != (stack.n_cols,) or stack.y_dist.shape != (stack.n_rows,):
+            raise SessionError("Spatial coordinates must match data dimensions")
+        stack.data_dwell = np.ones(stack.n_ev)
+        stack.fill_h5_struct_from_stk()
+        if stack.stack4D is not None:
+            stack.data_struct.exchange.data = stack.stack4D
+            stack.data_struct.exchange.theta = stack.theta
+            stack.data_struct.exchange.data_axes = "x:y:energy:theta"
+        stack.setScale()
+        return stack
+
+    @staticmethod
+    def _file_path(path):
+        if not isinstance(path, (str, Path)) or not str(path):
+            raise SessionError("path must be a nonempty file path")
+        path = Path(path).expanduser().resolve()
+        if not path.is_file():
+            raise SessionError(f"File not found: {path}", "file_error")
+        return path
+
+    def inspect_file(self, path):
+        path = self._file_path(path)
+        if path.suffix.lower() == ".npz":
+            with np.load(path, allow_pickle=False) as archive:
+                if not {"data", "energies"}.issubset(archive.files):
+                    raise SessionError("NPZ requires data and energies arrays")
+                return {"path": str(path), "plugin": "MANTiS NPZ", "selections": [],
+                        "shape": list(archive["data"].shape), "arrays": list(archive.files)}
+        if path.suffix.lower() in (".h5", ".hdf5", ".hdf"):
+            import h5py
+            with h5py.File(path, "r") as archive:
+                if "mantis_session_version" in archive.attrs:
+                    return {"path": str(path), "plugin": "MANTiS session HDF5", "selections": [],
+                            "shape": list(archive["exchange/data"].shape)}
+        from .. import file_plugins
+        plugin = file_plugins.identify(str(path))
+        if plugin is None:
+            raise SessionError(f"Unsupported file format: {path.suffix}", "unsupported_format")
+        structure = file_plugins.GetFileStructure(str(path), plugin=plugin)
+        selections = []
+        for region, (name, channels) in enumerate((structure or {}).items()):
+            for channel, label in enumerate(channels):
+                selections.append({"selection": [region, channel], "region": str(name), "channel": str(label)})
+        return {"path": str(path), "plugin": plugin.title, "selections": selections}
+
+    def _load_plugin(self, path, selection):
+        from .. import file_plugins
+        plugin = file_plugins.identify(str(path))
+        if plugin is None:
+            raise SessionError(f"Unsupported file format: {path.suffix}", "unsupported_format")
+        if path.suffix.lower() in (".tif", ".tiff"):
+            # TIFF rows are y; retain input ordering rather than the legacy reader's
+            # implicit energy sorting. Energies must be supplied by a sidecar.
+            from PIL import Image, ImageSequence
+            with Image.open(path) as image:
+                frames = [np.asarray(frame).T.copy() for frame in ImageSequence.Iterator(image)]
+            energies = np.loadtxt(path.with_suffix(".txt"), comments="*")
+            return self._make_stack(np.stack(frames, axis=2), np.atleast_1d(energies))
+        info = self.inspect_file(path)
+        available = [row["selection"] for row in info["selections"]]
+        if selection is None and available:
+            if len(available) != 1:
+                raise SessionError("Explicit selection is required; use inspect_file")
+            selection = [available[0]]
+        if selection is not None:
+            if (not isinstance(selection, (list, tuple)) or not selection or
+                    any(not isinstance(pair, (list, tuple)) or len(pair) != 2 or
+                        any(type(index) is not int or index < 0 for index in pair) for pair in selection)):
+                raise SessionError("selection must be nonempty [[region,channel], ...]")
+            if available and any(list(pair) not in available for pair in selection):
+                raise SessionError("selection is not available in this file")
+            if not available:
+                raise SessionError("This file has no selectable regions; omit selection")
+        # NeXus plugin's private third coordinate enables ring-current correction.
+        # Protocol v1 only selects region/channel; never opt into correction.
+        plugin_selection = ([list(pair) + [0] for pair in selection]
+                            if plugin.title == "NXstxm" else selection)
+        stack = _new_stack()
+        file_plugins.load(str(path), stack, plugin=plugin, selection=plugin_selection)
+        # Validate independently without stripping plugin metadata/dwell times.
+        self._make_stack(stack.absdata if stack.stack4D is None else stack.stack4D,
+                         stack.ev, stack.theta if stack.stack4D is not None else None,
+                         stack.x_dist, stack.y_dist)
+        return stack
+
+    def build_stack(self, paths, energies):
+        if not isinstance(paths, (list, tuple)) or not paths:
+            raise SessionError("paths must be a nonempty list")
+        energies = finite_array(energies, "energies")
+        if energies.shape != (len(paths),):
+            raise SessionError("energies must match paths")
+        files = [self._file_path(path) for path in paths]
+        frames = []
+        for path in files:
+            if path.suffix.lower() in (".tif", ".tiff"):
+                from PIL import Image
+                with Image.open(path) as image:
+                    if image.n_frames != 1:
+                        raise SessionError("build_stack requires single-frame files")
+                    frame = np.asarray(image).T.copy()
+            else:
+                item = Session()
+                item.open(path)
+                if item.stack.n_ev != 1 or item.stack.stack4D is not None:
+                    raise SessionError("build_stack requires single-frame files")
+                frame = item.stack.absdata[:, :, 0]
+            if frame.ndim != 2 or frames and frame.shape != frames[0].shape:
+                raise SessionError("Frames must be grayscale with identical dimensions")
+            frames.append(frame)
+        stack = self._make_stack(np.stack(frames, axis=2), energies)
+        params = {"paths": [str(path) for path in files], "energies": energies.tolist(),
+                  "sha256": [_hash(path) for path in files]}
+        self.stack, self.source = stack, str(files[0])
+        self._source_paths = files
+        self.history, self.results = [], {}
+        self.normalized, self.display = False, "intensity"
+        self.energy_index = self.selected_x = self.selected_y = 0
+        self._original = copy.deepcopy(stack)
+        self._raw_original = copy.deepcopy(stack)
+        self._invalidate()
+        self.record("build_stack", params)
+        return self.snapshot()
+
+    def open(self, path, pre_normalized=False, selection=None):
+        path = Path(path).expanduser().resolve()
+        if not path.is_file():
+            raise SessionError(f"File not found: {path}", "file_error")
+        raw_original = None
+        embedded_od = None
+        embedded_i0 = embedded_i0_energies = None
+        if path.suffix.lower() == ".npz":
+            with np.load(path, allow_pickle=False) as archive:
+                if not {"data", "energies"}.issubset(archive.files):
+                    raise SessionError("NPZ requires data and energies arrays")
+                stack = self._make_stack(archive["data"], archive["energies"], archive.get("theta"),
+                                         archive.get("x"), archive.get("y"))
+                embedded_od = archive.get("od")
+                embedded_i0 = archive.get("i0")
+                embedded_i0_energies = archive.get("i0_energies", stack.ev)
+                if "raw_data" in archive:
+                    raw_original = self._make_stack(archive["raw_data"], archive["raw_energies"],
+                                                    archive.get("raw_theta", archive.get("theta")),
+                                                    archive.get("raw_x"), archive.get("raw_y"))
+        elif path.suffix.lower() in (".h5", ".hdf5", ".hdf"):
+            import h5py
+            with h5py.File(path, "r") as archive:
+                if all(key in archive for key in ("exchange/data", "exchange/energy")):
+                    # Read Exchange axes before legacy plugins can sort or repair.
+                    read = lambda key: archive[key][()] if key in archive else None
+                    stack = self._make_stack(read("exchange/data"), read("exchange/energy"),
+                                             read("exchange/theta"), read("exchange/x"), read("exchange/y"))
+                    embedded_od = read("normalization/od")
+                    embedded_i0 = read("normalization/i0")
+                    embedded_i0_energies = read("normalization/energy")
+                    if embedded_i0 is None:
+                        embedded_i0 = read("spectromicroscopy/normalization/white_spectrum")
+                        embedded_i0_energies = read("spectromicroscopy/normalization/white_spectrum_energy")
+                    if embedded_i0_energies is None:
+                        embedded_i0_energies = stack.ev
+                    if "raw/data" in archive:
+                        theta = read("raw/theta")
+                        raw_original = self._make_stack(read("raw/data"), read("raw/energy"),
+                                                        read("exchange/theta") if theta is None else theta,
+                                                        read("raw/x"), read("raw/y"))
+                else:
+                    stack = self._load_plugin(path, selection)
+        else:
+            stack = self._load_plugin(path, selection)
+        if embedded_od is not None:
+            embedded_od = finite_array(embedded_od, "optical density")
+            shape = stack.absdata.shape if stack.stack4D is None else stack.stack4D.shape
+            if embedded_od.shape != shape:
+                raise SessionError("Stored optical density shape does not match data")
+            stack.od3d = embedded_od if stack.stack4D is None else embedded_od[:, :, :, 0].copy()
+            if stack.stack4D is not None:
+                stack.od4d = embedded_od
+            stack.od = stack.od3d.reshape(-1, stack.n_ev, order="F").copy()
+        if not isinstance(pre_normalized, bool):
+            raise SessionError("pre_normalized must be boolean")
+        if embedded_i0 is not None:
+            incident = finite_array(embedded_i0, "I0")
+            axes = finite_array(embedded_i0_energies, "I0 energies")
+            allowed = [(len(axes),)] if axes.ndim == 1 else []
+            if stack.stack4D is not None and axes.ndim == 1:
+                allowed.append((len(axes), stack.n_theta))
+            if incident.shape not in allowed or np.any(incident <= 0):
+                raise SessionError("I0 must be positive with shape [energy] or [energy,theta]")
+            stack.i0data, stack.evi0 = incident.copy(), axes.copy()
+            stack.i0_dwell = stack.data_dwell
+            if embedded_od is None and not pre_normalized:
+                stack.calculate_optical_density()
+            stack.fill_h5_struct_normalization()
+        if pre_normalized:
+            stack.UsePreNormalizedData()
+        self.stack = stack
+        self.source = str(path)
+        self._source_paths = [path]
+        self.analysis = analyze.analyze(stack)
+        self.history, self.results = [], {}
+        self.normalized = pre_normalized or embedded_od is not None or embedded_i0 is not None
+        self.energy_index = self.selected_x = self.selected_y = 0
+        self.roi_mask = None
+        self.display = "intensity"
+        self._original = copy.deepcopy(stack)
+        self._raw_original = raw_original if raw_original is not None else copy.deepcopy(stack)
+        self.record("open", {"path": str(path), "sha256": _hash(path),
+                             "pre_normalized": pre_normalized, "selection": selection})
+        return self.snapshot()
+
+    def _invalidate(self):
+        self.analysis = analyze.analyze(self.stack)
+        self.results = {}
+        self.roi_mask = None
+        self._last_snapshot = None
+
+    def _bounds(self, bounds):
+        if not isinstance(bounds, (list, tuple)) or len(bounds) != 4 or any(type(v) is not int for v in bounds):
+            raise SessionError("bounds must be four integer coordinates")
+        x0, y0, x1, y1 = bounds
+        if not (0 <= x0 < x1 <= self.stack.n_cols and 0 <= y0 < y1 <= self.stack.n_rows):
+            raise SessionError("bounds must select a nonempty ROI inside the image")
+        return x0, y0, x1, y1
+
+    def normalize(self, mode, path=None, bounds=None, min=None, max=None, fraction_min=None):
+        self.require_data()
+        trial = copy.deepcopy(self.stack)
+        params = {"mode": mode}
+        if mode == "pre_normalized":
+            trial.UsePreNormalizedData()
+        else:
+            values = trial.absdata if trial.stack4D is None else trial.stack4D
+            if mode == "file":
+                if path is None:
+                    raise SessionError("file normalization requires path")
+                rows = []
+                for line in Path(path).read_text().splitlines():
+                    line = line.strip()
+                    if not line or line.startswith(("#", "*")):
+                        continue
+                    try:
+                        row = [float(v) for v in line.replace(",", " ").split()]
+                    except ValueError:
+                        if not rows and line.lower().startswith(("energy", "ev")):
+                            continue
+                        raise SessionError("I0 file must contain two numeric columns")
+                    if len(row) != 2:
+                        raise SessionError("I0 file must contain two numeric columns")
+                    rows.append(row)
+                table = finite_array(rows, "I0")
+                if table.ndim != 2 or table.shape[1] != 2:
+                    raise SessionError("I0 file must contain two numeric columns")
+                trial.evi0, trial.i0data = table[:, 0].copy(), table[:, 1].copy()
+                params.update(path=str(Path(path).resolve()), sha256=_hash(path))
+            elif mode in ("roi", "histogram"):
+                mask = np.zeros((trial.n_cols, trial.n_rows), dtype=bool)
+                if mode == "roi":
+                    x0, y0, x1, y1 = self._bounds(bounds)
+                    mask[x0:x1, y0:y1] = True
+                    params["bounds"] = list(bounds)
+                else:
+                    flux = values.mean(axis=tuple(range(2, values.ndim)))
+                    if fraction_min is not None:
+                        fraction = float(finite_array(fraction_min, "fraction_min"))
+                        if not 0 <= fraction <= 1 or min is not None:
+                            raise SessionError("fraction_min must be in [0,1] and cannot accompany min")
+                        min = fraction * float(flux.max())
+                        params["fraction_min"] = fraction
+                    if min is None or max is None and fraction_min is None:
+                        raise SessionError("histogram requires min/max or fraction_min")
+                    low = float(finite_array(min, "min"))
+                    high = float(flux.max()) if max is None else float(finite_array(max, "max"))
+                    if low > high:
+                        raise SessionError("histogram min must not exceed max")
+                    mask = (flux >= low) & (flux <= high)
+                    params.update(min=low, max=high)
+                if not mask.any():
+                    raise SessionError("Normalization ROI is empty")
+                trial.evi0 = trial.ev.copy()
+                trial.i0data = values[mask].mean(axis=0)
+                trial.i0_mask = mask
+            else:
+                raise SessionError(f"Unknown normalization mode: {mode}")
+            trial.i0_dwell = trial.data_dwell
+            trial.calculate_optical_density()
+            trial.fill_h5_struct_normalization()
+        self.stack = trial
+        self.normalized = True
+        self._invalidate()
+        self.display = "od"
+        self.record("normalize", params)
+        return self.snapshot()
+
+    def view(self, energy_index=None, x=None, y=None, display=None, roi=None, polygon=None):
+        self.require_data()
+        energy = self.energy_index if energy_index is None else self._integer(energy_index, "energy_index", 0, self.stack.n_ev-1)
+        sx = self.selected_x if x is None else self._integer(x, "x", 0, self.stack.n_cols-1)
+        sy = self.selected_y if y is None else self._integer(y, "y", 0, self.stack.n_rows-1)
+        display = self.display if display is None else display
+        if display not in ("intensity", "od"):
+            raise SessionError("display must be intensity or od")
+        if display == "od":
+            self.require_normalized()
+        if roi is not None and polygon is not None:
+            raise SessionError("Choose either rectangle ROI or polygon")
+        mask = self.roi_mask
+        if roi is not None:
+            x0, y0, x1, y1 = self._bounds(roi)
+            mask = np.zeros((self.stack.n_cols, self.stack.n_rows), dtype=bool)
+            mask[x0:x1, y0:y1] = True
+        if polygon is not None:
+            from matplotlib.path import Path as Polygon
+            vertices = finite_array(polygon, "polygon")
+            if vertices.ndim != 2 or vertices.shape[1] != 2 or len(vertices) < 3:
+                raise SessionError("polygon requires at least three [x,y] vertices")
+            xx, yy = np.meshgrid(np.arange(self.stack.n_cols)+0.5, np.arange(self.stack.n_rows)+0.5, indexing="ij")
+            mask = Polygon(vertices).contains_points(np.column_stack((xx.ravel(), yy.ravel()))).reshape(xx.shape)
+            if not mask.any():
+                raise SessionError("polygon ROI is empty")
+        self.energy_index, self.selected_x, self.selected_y = energy, sx, sy
+        self.display, self.roi_mask = display, mask
+        return self.snapshot()
+
+    def _values(self):
+        return self.stack.absdata if self.stack.stack4D is None else self.stack.stack4D
+
+    def _commit_processed(self, values, energies=None, x=None, y=None):
+        stack = self._make_stack(values, self.stack.ev if energies is None else energies,
+                                 self.stack.theta if self.stack.stack4D is not None else None,
+                                 self.stack.x_dist if x is None else x, self.stack.y_dist if y is None else y)
+        self.stack = stack
+        self.normalized = False
+        self.display = "intensity"
+        self.energy_index = min(self.energy_index, stack.n_ev-1)
+        self.selected_x = min(self.selected_x, stack.n_cols-1)
+        self.selected_y = min(self.selected_y, stack.n_rows-1)
+        self._invalidate()
+
+    def crop(self, bounds=None, energy_range=None):
+        self.require_data()
+        bounds = [0, 0, self.stack.n_cols, self.stack.n_rows] if bounds is None else bounds
+        x0, y0, x1, y1 = self._bounds(bounds)
+        energy_range = [0, self.stack.n_ev] if energy_range is None else energy_range
+        if not isinstance(energy_range, (list, tuple)) or len(energy_range) != 2:
+            raise SessionError("energy_range must be [first,last_exclusive]")
+        start = self._integer(energy_range[0], "first", 0, self.stack.n_ev-1)
+        end = self._integer(energy_range[1], "last_exclusive", start+1, self.stack.n_ev)
+        self._commit_processed(self._values()[x0:x1, y0:y1, start:end], self.stack.ev[start:end],
+                               self.stack.x_dist[x0:x1], self.stack.y_dist[y0:y1])
+        self.record("crop", {"bounds": bounds, "energy_range": energy_range})
+        return self.snapshot()
+
+    def dark(self, value):
+        self.require_data()
+        value = float(finite_array(value, "dark value"))
+        if value < 0:
+            raise SessionError("dark value must be nonnegative")
+        values = self._values() - value
+        if np.any(values <= 0):
+            raise SessionError("Dark-subtracted transmission must remain strictly positive")
+        self._commit_processed(values)
+        self.record("dark", {"value": value})
+        return self.snapshot()
+
+    def remove_image(self, index):
+        self.require_data()
+        self._integer(index, "index", 0, self.stack.n_ev-1)
+        if self.stack.n_ev == 1:
+            raise SessionError("Cannot remove the last image")
+        self._commit_processed(np.delete(self._values(), index, axis=2), np.delete(self.stack.ev, index))
+        self.record("remove_image", {"index": index})
+        return self.snapshot()
+
+    def reset(self):
+        self.require_data()
+        self.stack = copy.deepcopy(self._original)
+        self.stack.reset_i0()
+        self.stack.od4d = 0
+        self.normalized = False
+        self.display = "intensity"
+        self.energy_index = self.selected_x = self.selected_y = 0
+        self._invalidate()
+        self.record("reset", {})
+        return self.snapshot()
+
+    def despike(self, sigma=5):
+        self.require_data()
+        sigma = float(finite_array(sigma, "sigma"))
+        if sigma <= 0:
+            raise SessionError("sigma must be positive")
+        if min(self.stack.n_cols, self.stack.n_rows) < 3:
+            raise SessionError("Despiking requires images at least 3 by 3")
+        values = self._values().copy()
+        # Original Enhanced Lee filter / four-neighbor replacement. sigma is
+        # the Lee noise standard deviation, not an undocumented median filter.
+        for index in np.ndindex(values.shape[2:]):
+            sl = (slice(None), slice(None)) + index
+            values[sl] = self.stack.despike(values[sl], sigma=sigma)
+        self._commit_processed(values)
+        self.record("despike", {"sigma": sigma, "algorithm": "enhanced Lee", "threshold_percent": 50.0})
+        return self.snapshot()
+
+    def align(self, reference=0, upsample_factor=1, manual_shifts=None, crop=False):
+        self.require_data()
+        self._integer(reference, "reference", 0, self.stack.n_ev-1)
+        self._integer(upsample_factor, "upsample_factor", 1, 1000)
+        if type(crop) is not bool:
+            raise SessionError("crop must be boolean")
+        values = self._values().copy()
+        if manual_shifts is not None:
+            shifts = finite_array(manual_shifts, "manual_shifts")
+            if shifts.shape != (self.stack.n_ev, 2):
+                raise SessionError("manual_shifts must have one [dx,dy] pair per energy")
+            algorithm = "manual shifts; legacy cubic image registration"
+        else:
+            from skimage.registration import phase_cross_correlation
+            images = self.stack.absdata
+            if any(np.ptp(images[:, :, i]) == 0 for i in range(self.stack.n_ev)):
+                raise SessionError("Cannot register constant images")
+            shifts = np.array([phase_cross_correlation(images[:, :, reference], images[:, :, i],
+                              upsample_factor=upsample_factor)[0] for i in range(self.stack.n_ev)])
+            algorithm = "phase cross-correlation; legacy cubic image registration"
+        for index in np.ndindex(values.shape[2:]):
+            sl = (slice(None), slice(None)) + index
+            values[sl] = self.stack.apply_image_registration(values[sl], *shifts[index[0]])
+        x, y = self.stack.x_dist, self.stack.y_dist
+        if crop:
+            values, x0, x1, y0, y1 = self.stack.crop_registed_images(values, shifts[:, 0].min(), shifts[:, 0].max(),
+                                                                  shifts[:, 1].min(), shifts[:, 1].max())
+            if 0 in values.shape:
+                raise SessionError("Alignment shifts leave no overlapping image")
+            x, y = x[x0:x1], y[y0:y1]
+        self._commit_processed(values, x=x, y=y)
+        self.stack.xshifts, self.stack.yshifts = shifts[:, 0].copy(), shifts[:, 1].copy()
+        self.results["alignment"] = {"shifts": shifts.copy()}
+        self.record("align", {"reference": reference, "upsample_factor": upsample_factor,
+                              "shifts": shifts.tolist(), "crop": crop, "algorithm": algorithm})
+        return self.snapshot(metrics={"alignment": algorithm})
+
+    @staticmethod
+    def _integer(value, name, low, high):
+        if type(value) is not int or not low <= value <= high:
+            raise SessionError(f"{name} must be an integer in [{low},{high}]")
+        return value
+
+    def pca(self, components=None):
+        self.require_normalized()
+        if self.stack.n_ev < 2 or not np.any(self.stack.od):
+            raise SessionError("PCA requires at least two energies and nonzero optical density")
+        if components is not None:
+            self._integer(components, "components", 1, self.stack.n_ev)
+        trial = analyze.analyze(self.stack)
+        # Original uncentered D.T @ D PCA, not sklearn/centered PCA.
+        with np.errstate(divide="ignore", invalid="ignore"):
+            trial.calculate_pca()
+        for name in ("eigenvals", "eigenvecs", "pcaimages", "variance"):
+            finite_array(getattr(trial, name), name)
+        trial.numsigpca = components or getattr(trial, "numsigpca", 1)
+        self.analysis = trial
+        self.results = {"pca": {name: getattr(trial, name).copy() for name in
+                                ("eigenvals", "eigenvecs", "pcaimages", "variance")}}
+        self.record("pca", {"components": trial.numsigpca, "convention": "uncentered D.T @ D"})
+        return self.snapshot(
+            images=[image_record(f"PC {i+1}", trial.pcaimages[:, :, i]) for i in range(trial.numsigpca)],
+            spectra=[spectrum_record("Eigenvalues", np.arange(1, self.stack.n_ev+1), trial.eigenvals)] +
+                    [spectrum_record(f"PC {i+1}", self.stack.ev, trial.eigenvecs[:, i]) for i in range(trial.numsigpca)])
+
+    def cluster(self, clusters, components=None, remove_first=False, sigma_split=False, seed=0):
+        self.require_normalized()
+        if not self.analysis.pca_calculated:
+            raise SessionError("Run PCA first", "invalid_state")
+        pixels = self.stack.n_cols * self.stack.n_rows
+        self._integer(clusters, "clusters", 1, pixels)
+        self._integer(seed, "seed", 0, 2**32-1)
+        components = self.analysis.numsigpca if components is None else components
+        self._integer(components, "components", 1, self.stack.n_ev)
+        if type(remove_first) is not bool or type(sigma_split) is not bool:
+            raise SessionError("remove_first and sigma_split must be boolean")
+        if pixels < 2 or components <= int(remove_first):
+            raise SessionError("Clustering requires two pixels and at least one selected component")
+        reduced = self.analysis.pcaimages[:, :, int(remove_first):components].reshape(-1, components-int(remove_first))
+        if np.unique(reduced, axis=0).shape[0] < clusters:
+            raise SessionError("clusters exceeds the number of distinct pixel spectra")
+        trial = copy.copy(self.analysis)
+        trial.numsigpca = components
+        rng_state = np.random.get_state()
+        try:
+            np.random.seed(seed)
+            count = trial.calculate_clusters(clusters, int(remove_first), int(sigma_split))
+        finally:
+            np.random.set_state(rng_state)
+        names = ("cluster_indices", "clusterspectra", "clustersizes", "cluster_distances", "sse")
+        for name in names:
+            finite_array(getattr(trial, name), name)
+        self.analysis = trial
+        self.results = {k: v for k, v in self.results.items() if k == "pca"}
+        self.results["cluster"] = {name: getattr(trial, name).copy() for name in names}
+        self.record("cluster", {"clusters": clusters, "components": components,
+                                "remove_first": remove_first, "sigma_split": sigma_split, "seed": seed})
+        return self.snapshot(images=[image_record("Clusters", trial.cluster_indices),
+                                     image_record("Cluster distance (spectral SSE)", trial.cluster_distances)],
+                             spectra=[spectrum_record(f"Cluster {i+1}", self.stack.ev, trial.clusterspectra[i])
+                                      for i in range(count)], metrics={"clusters": count})
+
+    def export(self, path, format, overwrite=False):
+        self.require_data()
+        import os
+        import tempfile
+        target = Path(path).expanduser().resolve()
+        if any(target == source or (target.exists() and source.is_file() and os.path.samefile(target, source))
+               for source in self._source_paths):
+            raise SessionError("Cannot overwrite an input file")
+        if format not in ("hdf5", "npz", "csv", "png", "pdf", "svg"):
+            raise SessionError(f"Unsupported export format: {format}", "unsupported_format")
+        if type(overwrite) is not bool:
+            raise SessionError("overwrite must be boolean")
+        if target.exists() and not overwrite:
+            raise SessionError("Destination exists; set overwrite=true explicitly", "file_exists")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        history = self.history + [{"method": "export", "params": {"path": str(target), "format": format, "overwrite": overwrite}}]
+        view = self._last_snapshot or self.snapshot()
+        original = self._raw_original
+        raw = original.absdata if original.stack4D is None else original.stack4D
+        arrays = {"data": self._values(), "energies": self.stack.ev, "x": self.stack.x_dist, "y": self.stack.y_dist,
+                  "raw_data": raw, "raw_energies": original.ev,
+                  "raw_x": original.x_dist, "raw_y": original.y_dist}
+        if original.stack4D is not None:
+            arrays["raw_theta"] = original.theta
+        if self.stack.stack4D is not None:
+            arrays["theta"] = self.stack.theta
+        if self.normalized:
+            arrays["od"] = self.stack.od3d if self.stack.stack4D is None else self.stack.od4d
+            arrays["i0"] = np.asarray(self.stack.i0data)
+            arrays["i0_energies"] = np.asarray(self.stack.evi0)
+        def flatten(prefix, value):
+            if isinstance(value, dict):
+                for name, child in value.items():
+                    yield from flatten(f"{prefix}/{name}", child)
+            else:
+                yield prefix, value
+        for key, value in flatten("results", self.results):
+            if value is not None:
+                arrays[key] = np.asarray(value)
+        # Serialize into a private temporary file, then atomically publish. Failed
+        # export never truncates a preexisting file. No input file is modified.
+        handle, temporary = tempfile.mkstemp(prefix=".mantis-export-", dir=target.parent)
+        os.close(handle)
+        try:
+            if format == "npz":
+                with open(temporary, "wb") as stream:
+                    np.savez_compressed(stream, **arrays, source=self.source,
+                                        history=json.dumps(history, allow_nan=False), schema_version=1)
+            elif format == "hdf5":
+                import h5py
+                mapping = {"data": "exchange/data", "energies": "exchange/energy", "x": "exchange/x", "y": "exchange/y",
+                           "theta": "exchange/theta", "raw_data": "raw/data", "raw_energies": "raw/energy",
+                           "raw_x": "raw/x", "raw_y": "raw/y", "raw_theta": "raw/theta",
+                           "od": "normalization/od", "i0": "normalization/i0",
+                           "i0_energies": "normalization/energy"}
+                with h5py.File(temporary, "w") as archive:
+                    archive.attrs["mantis_session_version"] = 1
+                    archive.create_dataset("implements", data="information:exchange:spectromicroscopy")
+                    archive.create_dataset("version", data="1.0")
+                    for key, value in arrays.items():
+                        if value.dtype.kind == "U":
+                            value = value.astype(h5py.string_dtype("utf-8"))
+                        archive.create_dataset(mapping.get(key, key), data=value)
+                    archive["exchange/data"].attrs["axes"] = "x:y:energy:theta" if self.stack.stack4D is not None else "x:y:energy"
+                    archive.create_dataset("provenance/source", data=self.source)
+                    archive.create_dataset("provenance/history", data=json.dumps(history, allow_nan=False))
+            elif format == "csv":
+                import csv
+                with open(temporary, "w", newline="") as stream:
+                    writer = csv.writer(stream)
+                    writer.writerow(["spectrum", "x", "y"])
+                    for spectrum in view["spectra"]:
+                        writer.writerows((spectrum["name"], x, y) for x, y in zip(spectrum["x"], spectrum["y"]))
+            else:
+                from matplotlib.figure import Figure
+                from matplotlib.backends.backend_agg import FigureCanvasAgg
+                count = max(1, len(view["images"]) + bool(view["spectra"]))
+                figure = Figure(figsize=(5 * count, 4), layout="constrained")
+                FigureCanvasAgg(figure)
+                for i, image in enumerate(view["images"]):
+                    axis = figure.add_subplot(1, count, i+1)
+                    shape = (image["height"], image["width"])
+                    if image.get("channels") == 3:
+                        shape += (3,)
+                    axis.imshow(np.asarray(image["values"]).reshape(shape), origin="lower", aspect="auto")
+                    axis.set_title(image["title"])
+                if view["spectra"]:
+                    axis = figure.add_subplot(1, count, count)
+                    for spectrum in view["spectra"]:
+                        axis.plot(spectrum["x"], spectrum["y"], label=spectrum["name"])
+                    axis.legend()
+                figure.savefig(temporary, format=format, dpi=150)
+                figure.clear()
+            if overwrite:
+                os.replace(temporary, target)
+            else:
+                # link is an atomic no-clobber publication on the same filesystem.
+                os.link(temporary, target)
+                os.unlink(temporary)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        self.history = history
+        result = self.snapshot(images=view["images"], spectra=view["spectra"], metrics=view["metrics"])
+        result["exported_path"] = str(target)
+        return result
+
+    def snapshot(self, images=None, spectra=None, metrics=None):
+        self.require_data()
+        values = self.stack.od3d if self.display == "od" else self.stack.absdata
+        if images is None:
+            images = [image_record("Optical density" if self.display == "od" else "Intensity",
+                                   values[:, :, self.energy_index])]
+        if spectra is None:
+            spectra = [spectrum_record("Pixel", self.stack.ev, values[self.selected_x, self.selected_y])]
+            if self.roi_mask is not None:
+                spectra.append(spectrum_record("ROI mean", self.stack.ev, values[self.roi_mask].mean(axis=0)))
+        result = {"source": self.source, "shape": list(self.stack.absdata.shape),
+                  "energies": self.stack.ev.tolist(), "normalized": self.normalized,
+                  "pca_ready": bool(self.analysis.pca_calculated),
+                  "clusters_ready": bool(self.analysis.clusters_calculated),
+                  "energy_index": self.energy_index, "selected_x": self.selected_x,
+                  "selected_y": self.selected_y, "images": images, "spectra": spectra,
+                  "metrics": {str(k): str(v) for k, v in (metrics or {}).items()},
+                  "history": copy.deepcopy(self.history)}
+        json.dumps(result, allow_nan=False)
+        self._last_snapshot = copy.deepcopy(result)
+        return result

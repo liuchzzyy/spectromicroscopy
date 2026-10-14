@@ -88,9 +88,15 @@ class nnma():
     # Update mu
     def muUpdate(self, mu, tUpdated):
         dCostSmooth_dMu = self.calcDCostSmooth_dMu(mu)
-        muDiff = mu - self.muCluster
-        muUpdateFactor = np.dot(self.OD, tUpdated.T) / ( np.dot(mu, np.dot(tUpdated, tUpdated.T))
-                         + self.lambdaSmooth*dCostSmooth_dMu + self.lambdaClusterSim*2*muDiff + 1e-9 )
+        # Split the gradient of lambda*||mu-muCluster||^2 into
+        # nonnegative numerator/denominator terms. Putting the signed
+        # difference in the denominator produced negative factors which the
+        # caller clipped to zero, irreversibly destroying components.
+        numerator = np.dot(self.OD, tUpdated.T) + 2*self.lambdaClusterSim*self.muCluster
+        denominator = (np.dot(mu, np.dot(tUpdated, tUpdated.T))
+                       + self.lambdaSmooth*dCostSmooth_dMu
+                       + 2*self.lambdaClusterSim*mu + 1e-9)
+        muUpdateFactor = numerator / denominator
         muUpdated = mu * muUpdateFactor
         # Normalize each column of mu
         return muUpdated
@@ -131,7 +137,7 @@ class nnma():
         costTotal = ( costDataMatch + self.lambdaSparse*costSparse 
 		  + self.lambdaClusterSim*costClusterSim + self.lambdaSmooth*costSmooth )
         if count > 0:
-            deltaError = self.costFnArray[count, 1] - self.costFnArray[count-1, 1]
+            deltaError = costTotal - self.costFnArray[count-1, 0]
         elif count == 0:
             deltaError = -1e-13
         self.costFnArray[count, :] = np.array([costTotal, deltaError, 
@@ -207,9 +213,10 @@ class nnma():
             muCurrent = muUpdated
 
             # Calculate cost function
-            costCurrent, deltaErrorCurrent = self.calcCostFn(muCurrent, tCurrent, count)
-
             count = count + 1
+            costCurrent, deltaErrorCurrent = self.calcCostFn(muCurrent, tCurrent, count)
+            self.muRecon, self.tRecon = muCurrent, tCurrent
+            self.costTotal, self.deltaError = costCurrent, deltaErrorCurrent
             print('Iteration number {0}/{1}'.format(count,self.maxIters), end='\r')
         print('')
         endTime = time.time()

@@ -470,6 +470,55 @@ class data:
     # ----------------------------------------------------------------------
     # Normalize the data: calculate optical density matrix D
     def calculate_optical_density(self):
+        """Beer--Lambert normalization without repairing or mutating input.
+
+        Preserve the original cubic/linear interpolation convention, but do not
+        perturb energy coordinates, replace nonpositive counts, or hide NaNs.
+        Validate the entire result before committing normalization state.
+        """
+        energies = np.asarray(self.evi0, dtype=float)
+        incident = np.asarray(self.i0data, dtype=float)
+        measured = self.absdata if self.stack4D is None else self.stack4D
+        if energies.ndim != 1 or energies.size == 0 or not np.all(np.isfinite(energies)):
+            raise ValueError('I0 energies must be a finite nonempty vector')
+        if np.any(np.diff(energies) <= 0):
+            raise ValueError('I0 energies must be strictly increasing without duplicates')
+        if incident.shape[0] != energies.size or incident.ndim not in (1, 2):
+            raise ValueError('I0 shape must match its energy axis')
+        if not np.all(np.isfinite(incident)) or np.any(incident <= 0):
+            raise ValueError('I0 must be finite and strictly positive')
+        if not np.all(np.isfinite(measured)) or np.any(measured <= 0):
+            raise ValueError('Transmission must be finite and strictly positive')
+        if energies.size == 1:
+            if self.n_ev != 1 or self.ev[0] != energies[0]:
+                raise ValueError('I0 energy range must cover the dataset')
+            interpolated = incident.copy()
+        else:
+            if np.min(self.ev) < energies[0] or np.max(self.ev) > energies[-1]:
+                raise ValueError('I0 energy range must cover the dataset')
+            interpolated = scipy.interpolate.interp1d(
+                energies, incident, kind='cubic' if energies.size > 3 else 'linear',
+                axis=0, bounds_error=True)(self.ev)
+        if self.data_dwell is not None and self.i0_dwell is not None:
+            ratio = np.asarray(self.data_dwell) / np.asarray(self.i0_dwell)
+            interpolated = interpolated * (ratio[:, None] if interpolated.ndim == 2 else ratio)
+        if not np.all(np.isfinite(interpolated)) or np.any(interpolated <= 0):
+            raise ValueError('Interpolated I0 must be finite and strictly positive')
+        if self.stack4D is not None and interpolated.ndim == 1:
+            interpolated = interpolated[:, None]
+        with np.errstate(divide='raise', invalid='raise', over='raise'):
+            optical_density = -np.log(measured / interpolated)
+        if not np.all(np.isfinite(optical_density)):
+            raise ValueError('Optical density must be finite')
+        if self.stack4D is not None:
+            self.od4d = optical_density
+            self.od3d = optical_density[:, :, :, 0].copy()
+        else:
+            self.od3d = optical_density
+        self.od = self.od3d.reshape((self.n_cols * self.n_rows, self.n_ev), order='F').copy()
+        return
+
+    def _legacy_calculate_optical_density(self):
 
         if self.stack4D is not None:
             self.calculate_optical_density_4D()
@@ -918,9 +967,9 @@ class data:
 
     # -----------------------------------------------------------------------------
     # Despike image using Enhanced Lee Filter
-    def despike(self, image, leefilt_percent=50.0):
+    def despike(self, image, leefilt_percent=50.0, sigma=5.0):
 
-        fimg = self.lee_filter(image)
+        fimg = self.lee_filter(image, sigma=sigma)
 
         leefilt_max = np.amax(fimg)
         threshold = (1. + 0.01 * leefilt_percent) * leefilt_max
@@ -972,10 +1021,10 @@ class data:
 
     # -----------------------------------------------------------------------------
     # Lee filter
-    def lee_filter(self, image):
+    def lee_filter(self, image, sigma=5.0):
 
         nbox = 5  # The size of the filter box is 2N+1.  The default value is 5.
-        sig = 5.0  # Estimate of the standard deviation.  The default is 5.
+        sig = sigma
 
         delta = int((nbox - 1) / 2)  # width of window
 

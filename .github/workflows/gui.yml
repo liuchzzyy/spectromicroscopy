@@ -1,0 +1,26 @@
+name: Native macOS GUI (arm64 DMG)
+on:
+  push:
+    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', '.github/workflows/gui.yml']
+  pull_request:
+    paths: ['GUI/**', 'mantis_xray/**', 'scripts/**', 'pyproject.toml', '.github/workflows/gui.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m venv .venv && .venv/bin/python -m pip install '.[dev,xrm,netCDF]'
+      - run: swift test --package-path GUI -c release
+      - run: bash scripts/build_gui.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Mantis-native-arm64
+          path: |
+            dist/GUI/*.dmg
+            dist/GUI/*.dmg.sha256

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,7 +9,7 @@ authors = [
 ]
 description = "MANTiS is a Multivariate ANalysis Tool for x-ray Spectromicroscopy"
 readme = "README.md"
-requires-python = ">=3"
+requires-python = ">=3.10"
 keywords = ["spectromicroscopy", "microspectroscopy", "stxm", "hyperspectral", "imaging", "image"]
 license = "GPL-3.0-or-later"
 classifiers = [
@@ -23,14 +23,12 @@ classifiers = [
 	"Intended Audience :: Science/Research"
 ]
 dependencies = [
-	'PyQt5>=5.15.9',
 	'numpy',
 	'scipy>=1.11.4', 
 	'matplotlib>=3.6.0', 
 	'h5py', 
 	'Pillow', 
 	'lxml', 
-	'pyqtgraph>=0.13.7',
 	"scikit-image>=0.19.1",
 	"xdrlib3"
 ]
@@ -44,9 +42,13 @@ issues = "https://github.com/mlerotic/spectromicroscopy/issues"
 
 [project.optional-dependencies]
 netCDF = ["netCDF4"]
+xrm = ["olefile"]
+dev = ["pytest>=8", "build", "pyinstaller>=6"]
 
-[project.gui-scripts]
-mantis-xray = "mantis_xray.mantis_qt:main"
+[project.scripts]
+mantis-xray = "mantis_xray.cli:main"
+mantis = "mantis_xray.cli:main"
+mantis-engine = "mantis_xray.service:main"
 
 [tool.setuptools]
 include-package-data = true
@@ -55,10 +57,9 @@ include-package-data = true
 include = ["mantis_xray*"]
 
 [tool.setuptools.package-data]
-"mantis_xray" = ["*.qss", "Mantis_batch_settings.txt", "images/*"]
+"mantis_xray" = ["Mantis_batch_settings.txt"]
 "mantis_xray.analysis" = ["*.xdr"]
-"mantis_xray.gui.dialogs" = ["*.ui"]
-"mantis_xray.gui.pages" = ["*.ui"]
+
 
 [tool.setuptools.dynamic]
 version = {attr = "mantis_xray.__version__"}

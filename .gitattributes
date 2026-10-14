@@ -1,0 +1,3 @@
+# Upstream files use mixed LF/CRLF. Treat CR only as a line ending,
+# while retaining Git's checks for actual trailing spaces/tabs.
+* whitespace=cr-at-eol

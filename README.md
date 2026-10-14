@@ -8,7 +8,48 @@ not only reduce the time needed but also can uncover hidden trends in the data.
 # Mantis #
 [MANTiS](http://spectromicroscopy.com) is Multivariate ANalysis Tool for Spectromicroscopy developed in Python by [2nd Look Consulting](http://2ndlookconsulting.com). It uses principal component analysis and cluster analysis to classify pixels according to spectral similarity.
 
-## Download ##
+## Native macOS migration (unreleased source branch)
+
+This branch turns MANTiS into a single Qt-free Python distribution that provides the
+numerical library, the JSON-lines engine **and** the command-line interface, plus a
+native SwiftUI/AppKit macOS GUI (`GUI/`). The GUI bundles its own frozen engine and
+never calls the Python distribution, so upgrading either side does not replace the
+other.
+
+See **[build, CLI commands, architecture and upgrade boundaries](docs/native-migration.md)**
+and the [engine protocol](docs/native-contract.md). These changes are not yet
+published to PyPI or GitHub Releases. The upstream instructions below describe
+the historical 3.3.0 release, **not this source branch**.
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev,xrm,netCDF]'
+.venv/bin/mantis-xray --help          # or: python -m mantis_xray --help
+```
+
+> The distribution keeps the name `mantis-xray`, which is also the name of the
+> historical PyPI Qt release: always install from this checkout rather than
+> `pip install mantis-xray`.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `mantis_xray/` | The whole Python distribution: numerical core (`analysis/`, `core/`, `file_plugins/`), CLI (`cli.py`, `batch.py`), JSON-lines engine (`service.py`) and the packaged batch-settings template. No Qt. |
+| `GUI/` | Native SwiftUI/AppKit macOS app: Swift package (`Sources/`, `Tests/`), `Info.plist`. |
+| `scripts/` | `build_gui.sh` (app + DMG), `smoke_engine.py` (frozen-engine acceptance), `check_distributions.py` (wheel inspection), `engine_entry.py`. |
+| `tests/` | Python suite: algorithms, session, engine service, advanced workflows, CLI, packaging boundaries. |
+| `docs/` | `native-migration.md` (architecture, build, upgrade boundaries) and `native-contract.md` (wire protocol). |
+| `dist/` | Generated deliverables only — `dist/python` (wheel, sdist) and `dist/GUI` (`Mantis.app`, DMG, checksum). Git-ignored. |
+| `old/` | Untracked backup of the pre-migration Qt code, the historical Qt user guide and its screenshots. Nothing imports it; safe to delete. |
+
+Build intermediates never enter the tree: `scripts/build_gui.sh` keeps PyInstaller work,
+its spec file and the DMG staging area in a temporary directory and removes them on
+exit, so `dist/` is the only generated path left behind (and it is Git-ignored, so the
+DMG never affects repository size or diffs).
+
+
+## Upstream historical download ##
 Mantis package and binaries can be downloaded from 
 [spectromicroscopy.com](http://spectromicroscopy.com).
 Alternatively, you can install [Python](https://www.python.org/downloads/) and then run the command: `python3 -m pip install mantis-xray`

@@ -1,8 +1,5 @@
 include *.md
 include LICENSE
 include mantis_xray/Mantis_batch_settings.txt
-include mantis_xray/images/*
 include mantis_xray/analysis/henke.xdr
-recursive-include mantis_xray/gui *.ui
-include mantis_xray/*.qss
 recursive-include mantis_xray *.py

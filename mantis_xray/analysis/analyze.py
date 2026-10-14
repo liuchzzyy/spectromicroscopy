@@ -88,9 +88,9 @@ def model(p, nsteps, npeaks, x):
     
     y = np.zeros((x.size))
        
-    if nsteps > 0:
+    for j in range(nsteps):
         for i in range(x.size):
-            y[i] = stepfunc(istepfitparams, x[i])
+            y[i] += stepfunc(istepfitparams[3*j:3*j+3], x[i])
 
     for i in range(npeaks):
         pp = [p[pg+i*3],p[pg+1+i*3],p[pg+2+i*3]]
@@ -245,7 +245,9 @@ class analyze:
             #Point with the largest distance is the "elbow"
             sigpca = np.argmax(distance)
 
-            self.numsigpca = sigpca + 1
+            # A component count must be a plain int: it is recorded in analysis
+            # provenance that crosses the JSON protocol boundary.
+            self.numsigpca = int(sigpca) + 1
             
 
                         
@@ -339,7 +341,7 @@ class analyze:
                 #Point with the largest distance is the "elbow"
                 sigpca = np.argmax(distance)
     
-                self.numsigpca = sigpca + 1
+                self.numsigpca = int(sigpca) + 1
                 
     
                             
@@ -1569,7 +1571,9 @@ class analyze:
           
                     
         p2, success = leastsqbound(model_error, p[:], bounds, args=(nsteps, npeaks, np.array(self.stack.ev).astype(np.float64), np.array(xfit_spectrum).astype(np.float64)))
-       
+        if success not in (1, 2, 3, 4):
+            raise ValueError('Peak fit did not converge (optimizer status {})'.format(success))
+
         fp.stepfitparams = np.zeros((8))
         fp.gauss_fp_a = np.zeros((12))
         fp.gauss_fp_m = np.zeros((12))
