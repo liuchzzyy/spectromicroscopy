@@ -70,7 +70,7 @@ public enum CommandCatalog {
             return [.init("Fit spectrum", "fit_peaks", "Use an external spectrum or the selected ROI/pixel spectrum. Optional initial arrays must match the number of steps/peaks. No fabricated fit certainty.", [.init("path", "Spectrum file (optional)", .file, optional: true), .init("steps", "Absorption steps", .integer, "1"), .init("peaks", "Gaussian peaks", .integer, "1"), .init("baseline", "Initial baseline", .number, "0"), .init("step_params", "Step [amplitude, center, width] triples", .numbers, optional: true), .init("peak_amplitudes", "Peak amplitudes", .numbers, optional: true), .init("peak_centers", "Peak centers (eV)", .numbers, optional: true), .init("peak_widths", "Peak widths (eV)", .numbers, optional: true)])]
         case .tomography:
             return [.init("Reconstruct volume", "tomography", "Requires 4D input with an explicit theta axis. SIRT/TV use the supported original routines; FBP is explicitly selected. Numeric volumes are included in NPZ/HDF5 exports.", [.init("energy_index", "Energy index", .integer, "0"), .init("algorithm", "Reconstruction algorithm", .choice(["sirt", "tv", "fbp"]), "sirt"), .init("iterations", "Iterations", .integer, "20"), .init("beta", "TV regularization β", .number, "0.1"), .init("slice_index", "Volume slice index (optional)", .integer, optional: true)], requires: "normalized")]
-        case .settings: return []
+        case .settings, .versions: return []
         }
     }
     public static func parameters(for form: CommandForm, values: [String: String]) throws -> [String: JSONValue] {

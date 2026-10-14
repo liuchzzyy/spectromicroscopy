@@ -43,6 +43,18 @@ extension = ["*.hdf5", "*.hdf", "*.h5"]
 read_types = ["stack"]
 write_types = []
 
+# The beamline writes the normalized stack under one of two names: the aligned
+# variant (with a per-energy transform matrix) or the plain normalized one.
+DATA_DATASETS = ("spectroscopy_normalized_aligned", "spectroscopy_normalized")
+
+
+def _data_key(group):
+    """Return the dataset name holding the stack, or None when neither is present."""
+    for name in DATA_DATASETS:
+        if name in group:
+            return name
+    return None
+
 
 def identify(filename):
     """
@@ -61,7 +73,7 @@ def identify(filename):
         # Check for SpecNormalized group with required datasets
         if "SpecNormalized" in f:
             grp = f["SpecNormalized"]
-            has_data = "spectroscopy_normalized_aligned" in grp
+            has_data = _data_key(grp) is not None
             has_energy = "energy" in grp
             has_pixel_size = "x_pixel_size" in grp and "y_pixel_size" in grp
             f.close()
@@ -100,8 +112,9 @@ def GetFileStructure(filename):
         D["SpecNormalized"].norm_data = None
 
         # Get data shape and axes
-        if "spectroscopy_normalized_aligned" in grp:
-            data = grp["spectroscopy_normalized_aligned"]
+        key = _data_key(grp)
+        if key is not None:
+            data = grp[key]
             D["SpecNormalized"].data_shape = data.shape
             D["SpecNormalized"].data_axes = ["energy", "y", "x"]
         else:
@@ -143,7 +156,12 @@ def read(filename, stack_object, selection=None, *args, **kwargs):
     # Read the main spectroscopy data
     # MISTRAL format: (n_energy, y, x)
     # MANTiS expects: (x, y, n_energy)
-    data = numpy.array(grp["spectroscopy_normalized_aligned"]).astype("float32")
+    key = _data_key(grp)
+    if key is None:
+        print("Error: no normalized stack dataset found in file")
+        f.close()
+        return
+    data = numpy.array(grp[key]).astype("float32")
     stack_object.absdata = numpy.transpose(data, (2, 1, 0))
 
     # Read energy values

@@ -36,11 +36,21 @@ if [[ -e "$APP" ]]; then
   [[ -f "$APP/Contents/Info.plist" ]] || { printf 'Unexpected dist/GUI/Mantis.app; refusing replacement\n' >&2; exit 1; }
   rm -rf "$APP"
 fi
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Helpers"
 cp "$BIN_DIR/MantisNative" "$APP/Contents/MacOS/MantisNative"
+cp "$BIN_DIR/MantisUpdater" "$APP/Contents/Helpers/MantisUpdater"
+strip -x "$APP/Contents/MacOS/MantisNative" "$APP/Contents/Helpers/MantisUpdater"
 cp GUI/Info.plist "$APP/Contents/Info.plist"
-cp mantis_xray/images/Mantis_logo.icns "$APP/Contents/Resources/Mantis_logo.icns"
+cp GUI/Resources/Mantis_logo.icns "$APP/Contents/Resources/Mantis_logo.icns"
+cp GUI/Resources/Mantis_logo_about.png "$APP/Contents/Resources/Mantis_logo_about.png"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
+LOGIN_ITEM="$APP/Contents/Library/LoginItems/MantisLoginHelper.app"
+mkdir -p "$LOGIN_ITEM/Contents/MacOS"
+swiftc -O scripts/login-helper.swift -o "$LOGIN_ITEM/Contents/MacOS/MantisLoginHelper"
+cp GUI/Resources/LoginHelperInfo.plist "$LOGIN_ITEM/Contents/Info.plist"
+codesign --force --sign - "$LOGIN_ITEM"
+codesign --force --sign - "$APP/Contents/Helpers/MantisUpdater"
+# Bundle metadata and login item are in place before sealing the outer app.
 ditto "$WORK/engine-dist/mantis-engine" "$APP/Contents/Resources/engine"
 REVISION="$(git rev-parse --short HEAD)"
 if [[ -n "$(git status --porcelain)" ]]; then REVISION="${REVISION}-dirty"; fi
@@ -50,6 +60,8 @@ ENGINE_VERSION="$("$PYTHON" -c 'from mantis_xray import __version__; print(__ver
 /usr/libexec/PlistBuddy -c "Add :MantisEngineVersion string $ENGINE_VERSION" "$APP/Contents/Info.plist"
 # Ad-hoc local signature: integrity only, not Developer ID/notarization.
 codesign --force --deep --sign - "$APP"
+codesign --verify --strict "$LOGIN_ITEM"
+codesign --verify --strict "$APP/Contents/Helpers/MantisUpdater"
 codesign --verify --deep --strict "$APP"
 "$PYTHON" scripts/smoke_engine.py "$APP/Contents/Resources/engine/mantis-engine"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")"

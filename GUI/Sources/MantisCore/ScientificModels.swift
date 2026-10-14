@@ -61,7 +61,7 @@ public struct Snapshot: Codable, Sendable {
 }
 
 public enum WorkflowSection: String, CaseIterable, Identifiable, Sendable {
-    case load = "Load", preprocess = "Preprocess", pca = "PCA / Cluster", spectral = "Spectral Maps", nnma = "NNMA", peaks = "Peak ID", fitting = "Fitting", tomography = "Tomography", settings = "Settings"
+    case load = "Load Data", preprocess = "Preprocess", pca = "PCA / Clusterings", spectral = "Spectral Maps", nnma = "NNMA", peaks = "Peak ID", fitting = "Fitting", tomography = "Tomography", versions = "Version Management", settings = "Settings"
     public var id: String { rawValue }
     public var symbol: String {
         switch self {
@@ -73,6 +73,7 @@ public enum WorkflowSection: String, CaseIterable, Identifiable, Sendable {
         case .peaks: "waveform.path"
         case .fitting: "function"
         case .tomography: "cube.transparent"
+        case .versions: "arrow.down.app"
         case .settings: "gearshape"
         }
     }
@@ -86,7 +87,8 @@ public enum WorkflowSection: String, CaseIterable, Identifiable, Sendable {
         case .peaks: "Compare detected peaks with the original reference table."
         case .fitting: "Fit absorption steps and Gaussian resonances."
         case .tomography: "Reconstruct an energy channel from an explicit angular axis."
-        case .settings: "Independent native interface and private numerical engine."
+        case .versions: "Inspect native GUI and independent CLI releases."
+        case .settings: "Manage startup and window behavior."
         }
     }
 }

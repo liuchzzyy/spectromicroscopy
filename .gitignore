@@ -21,5 +21,17 @@ __pycache__/
 # Local backup of the pre-migration Qt code; safe to delete at any time
 /old/
 
+# Measurement data must never be committed: a single stack is hundreds of MB.
+# Keep test data outside the repository, or add it here deliberately per file.
+*.hdf5
+*.h5
+*.nxs
+*.stk
+*.xrm
+*.txrm
+*.ncb
+*.sm
+*.npz
+
 # macOS
 .DS_Store

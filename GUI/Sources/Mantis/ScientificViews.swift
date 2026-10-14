@@ -108,6 +108,8 @@ struct ScientificCanvas: View {
 }
 
 struct SpectraChart: View {
+    @EnvironmentObject private var preferences: InterfacePreferences
+    private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
     let spectra: [Spectrum]
     let selectedEnergy: Double?
     let selectEnergy: (Double) -> Void
@@ -116,15 +118,15 @@ struct SpectraChart: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Spectra & diagnostics", systemImage: "waveform.path").font(.headline)
+                Label(tr("Spectra & diagnostics"), systemImage: "waveform.path").font(.headline)
                 Spacer()
-                Picker("Series", selection: $selectedSeries) {
-                    Text("All spectra").tag("All spectra")
+                Picker(tr("Series"), selection: $selectedSeries) {
+                    Text(tr("All spectra")).tag("All spectra")
                     ForEach(spectra) { Text($0.name).tag($0.name) }
                 }.labelsHidden().frame(maxWidth: 220)
             }
             if spectra.isEmpty {
-                ContentUnavailableView("No spectrum yet", systemImage: "waveform.path", description: Text("Open a stack or run an analysis to inspect its spectra."))
+                ContentUnavailableView(tr("No spectrum yet"), systemImage: "waveform.path", description: Text(tr("Open a stack or run an analysis to inspect its spectra.")))
             } else {
                 Chart {
                     ForEach(visible) { spectrum in
@@ -135,7 +137,7 @@ struct SpectraChart: View {
                     }
                     if let selectedEnergy { RuleMark(x: .value("Selected energy", selectedEnergy)).foregroundStyle(.secondary.opacity(0.5)).lineStyle(StrokeStyle(dash: [4,4])) }
                 }
-                .chartXAxisLabel(axisLabel).chartYAxisLabel("Signal (series units)")
+                .chartXAxisLabel(tr(axisLabel)).chartYAxisLabel(tr("Signal (series units)"))
                 .chartLegend(position: .bottom, spacing: 8)
                 .chartOverlay { proxy in
                     GeometryReader { geo in
