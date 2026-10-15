@@ -58,11 +58,47 @@ def test_data_export_is_format_then_data_then_text_action():
     assert 'Image(systemName:' not in row
 
 
+def test_inspector_preserves_gutters_and_uses_readable_titles():
+    source = VIEWS.read_text()
+    inspector = source.split('struct ParameterInspector: View', 1)[1].split('struct SidebarRow: View', 1)[0]
+    assert 'Text(tr("PARAMETERS")).font(.title3.weight(.semibold))' in inspector
+    assert '.padding(.horizontal, Theme.inspectorInset)' in inspector
+    assert '.frame(maxWidth: .infinity, alignment: .leading)' in inspector
+    load = source.split('struct LoadDataInspector: View', 1)[1].split('struct ParameterInspector: View', 1)[0]
+    assert load.count('Text(tr("Parameters")).font(.headline)') == 2
+    data = load.split('Text(tr("Processed Data Export"))', 1)[1].split('// 图像导出', 1)[0]
+    assert '.frame(width: 112)' not in data
+    assert '.frame(minWidth: 60, maxWidth: .infinity)' in data
+    assert '.controlSize(.small)' in data
+    image = load.split('// 图像导出', 1)[1].split('// 操作日志导出', 1)[0]
+    assert 'HStack(spacing: 4)' in image
+    assert '.frame(width: 56)' in image
+    assert '.frame(width: 76)' in image
+
+
+def test_display_limits_keep_each_label_on_one_line_in_one_row():
+    source = VIEWS.read_text()
+    limits = source.split('.accessibilityIdentifier("display.contrast.range")', 1)[0].rsplit('HStack(spacing: 12)', 1)[-1]
+    assert 'Text(tr("Min")).lineLimit(1).fixedSize()' in limits
+    assert 'Text(tr("Max")).lineLimit(1).fixedSize()' in limits
+    assert '.frame(width: 32' not in limits
+    assert limits.count('.frame(minWidth: 44)') == 2
+
+
 def test_connected_copy_is_not_rendered_in_either_status_area():
     source = VIEWS.read_text()
     assert 'if let status = model.visibleStatus' in source
     assert 'Text(InterfaceText.status(model.status' not in source
     assert 'Text(tr(model.connected ? "Engine connected"' not in source
+
+
+def test_sidebar_has_no_connected_icon_or_empty_status_row():
+    sidebar = VIEWS.read_text().split("var sidebar:", 1)[1].split("@Environment(\\.colorScheme)", 1)[0]
+    assert 'model.connected ? "checkmark.circle.fill"' not in sidebar
+    assert 'Color.green' not in sidebar
+    status_bar = VIEWS.read_text().split("private var statusBar:", 1)[1].split("private var settings:", 1)[0]
+    assert 'model.connected ? .green' not in status_bar
+    assert 'if let label = WorkspaceModel.sidebarStatusLabel' in sidebar
 
 
 def test_interactive_smoke_is_opt_in_and_uses_isolated_preferences():

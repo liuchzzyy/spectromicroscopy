@@ -16,6 +16,9 @@ native SwiftUI/AppKit macOS GUI (`GUI/`). The GUI bundles its own frozen engine 
 never calls the Python distribution, so upgrading either side does not replace the
 other.
 
+Current source versions: macOS GUI **1.0.1** (build **2**), Python
+CLI/library/engine **3.3.1**. The JSON-lines protocol remains **1**.
+
 See **[build, CLI commands, architecture and upgrade boundaries](docs/native-migration.md)**
 and the [engine protocol](docs/native-contract.md). These changes are not yet
 published to PyPI or GitHub Releases. The upstream instructions below describe

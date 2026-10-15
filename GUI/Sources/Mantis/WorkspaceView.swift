@@ -41,19 +41,9 @@ struct WorkspaceView: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: Theme.sidebarIconSpacing) {
-                    Image(systemName: model.connected ? "checkmark.circle.fill" : "circle.dotted")
-                        .frame(width: Theme.sidebarIconWidth, alignment: .center)
-                        .foregroundStyle(model.connected ? Color.green : Color.secondary)
-                    // No "engine connected" sentence: a working engine needs no announcement,
-                    // and the status bar already reports it. Only a fault is spelled out.
-                    if let label = WorkspaceModel.sidebarStatusLabel(connected: model.connected) {
-                        Text(tr(label)).foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 0)
+                if let label = WorkspaceModel.sidebarStatusLabel(connected: model.connected) {
+                    Text(tr(label)).foregroundStyle(.secondary)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(tr(model.connected ? "Engine connected" : "Not connected"))
                 HStack(spacing: 8) {
                     Menu {
                         ForEach(InterfaceLanguage.allCases) { language in
@@ -336,16 +326,24 @@ struct WorkspaceView: View {
                             Button(tr("Fit")) { model.zoom(to: 1) }.disabled(model.zoomLevel == 1 || model.busy)
                         }
                         Text(tr("Double-click an image location to zoom into its source pixels.")).font(.caption2).foregroundStyle(.secondary)
-                        HStack(spacing: 6) {
-                            Text(tr("Min")).frame(width: 32, alignment: .leading)
-                            Slider(value: Binding(get: { model.contrastLow },
-                                                  set: { model.contrastLow = min($0, model.contrastHigh - 0.01) }), in: 0...0.99)
-                                .frame(maxWidth: 110)
-                            Text(tr("Max")).frame(width: 32, alignment: .leading)
-                            Slider(value: Binding(get: { model.contrastHigh },
-                                                  set: { model.contrastHigh = max($0, model.contrastLow + 0.01) }), in: 0.01...1)
-                                .frame(maxWidth: 110)
+                        HStack(spacing: 12) {
+                            HStack(spacing: 6) {
+                                Text(tr("Min")).lineLimit(1).fixedSize()
+                                Slider(value: Binding(get: { model.contrastLow },
+                                                      set: { model.contrastLow = min($0, model.contrastHigh - 0.01) }), in: 0...0.99)
+                                    .accessibilityLabel(tr("Min"))
+                                    .frame(minWidth: 44)
+                            }
+                            HStack(spacing: 6) {
+                                Text(tr("Max")).lineLimit(1).fixedSize()
+                                Slider(value: Binding(get: { model.contrastHigh },
+                                                      set: { model.contrastHigh = max($0, model.contrastLow + 0.01) }), in: 0.01...1)
+                                    .accessibilityLabel(tr("Max"))
+                                    .frame(minWidth: 44)
+                            }
                         }
+                        .font(.callout)
+                        .accessibilityIdentifier("display.contrast.range")
                         HStack(spacing: 8) {
                             Text(tr("Gamma")).frame(width: 48, alignment: .leading)
                             Slider(value: $model.gamma, in: 0.1...4)
@@ -392,7 +390,6 @@ struct WorkspaceView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let error = model.error { HStack(alignment: .top) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain) }.font(.caption).padding(.bottom, 3) }
             HStack {
-                Circle().fill(model.busy ? .orange : model.connected ? .green : .secondary).frame(width: 6, height: 6)
                 if let status = model.visibleStatus { Text(InterfaceText.status(status, language: preferences.language)).font(.caption) }
                 Spacer()
                 if !model.connected && !model.busy {
@@ -719,9 +716,12 @@ struct LoadDataInspector: View {
                     Divider()
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(tr("Parameters")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(tr("Parameters")).font(.headline)
                         Toggle(tr("Input is already optical density (OD)"), isOn: $model.openAsOpticalDensity)
-                            .font(.caption)
+                            .font(.callout)
+                            .toggleStyle(.checkbox)
+                            .help(tr("This declaration applies to the next file you open; it never changes the current stack."))
+                            .disabled(model.busy)
 
                         VStack(alignment: .leading, spacing: 4) {
                             Text(tr("Region / Channel (Optional)")).font(.caption2).foregroundStyle(.secondary)
@@ -782,7 +782,7 @@ struct LoadDataInspector: View {
                     Divider()
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(tr("Parameters")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Text(tr("Parameters")).font(.headline)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(tr("Photon energies in eV (comma or space separated)")).font(.caption2).foregroundStyle(.secondary)
                             TextField(tr("e.g. 280.0, 280.5, 281.0"), text: $model.mergeEnergiesText)
@@ -815,7 +815,7 @@ struct LoadDataInspector: View {
                             ForEach(["npz", "hdf5", "csv"], id: \.self) { Text($0.uppercased()).tag($0) }
                         }
                         .labelsHidden()
-                        .frame(width: 66)
+                        .frame(width: 62)
                         if model.dataExportFormat != "csv" {
                             Picker(tr("Data"), selection: Binding(
                                 get: { model.selectedExportTarget },
@@ -831,7 +831,8 @@ struct LoadDataInspector: View {
                                 }
                             }
                             .labelsHidden()
-                            .frame(width: 112)
+                            .frame(minWidth: 60, maxWidth: .infinity)
+                            .layoutPriority(-1)
                         }
                         Spacer(minLength: 0)
                         Button(tr(WorkspaceModel.dataExportActionTitle)) {
@@ -840,6 +841,7 @@ struct LoadDataInspector: View {
                         .fixedSize()
                         .disabled(!model.canExportProcessedData || model.busy || model.preview || !model.supports("export"))
                     }
+                    .controlSize(.small)
                     if model.dataExportFormat == "csv" {
                         Text(tr("CSV exports current spectra only; data choices apply to NPZ/HDF5."))
                             .font(.caption2).foregroundStyle(.secondary)
@@ -855,24 +857,27 @@ struct LoadDataInspector: View {
                 // 图像导出
                 VStack(alignment: .leading, spacing: 8) {
                     Text(tr("Image Export")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                    HStack {
+                    HStack(spacing: 4) {
                         Picker(tr("Format"), selection: $model.imageExportFormat) {
                             ForEach(["png", "pdf", "svg"], id: \.self) { Text($0.uppercased()).tag($0) }
                         }
                         .labelsHidden()
+                        .frame(width: 56)
 
                         Picker(tr("DPI"), selection: $model.imageExportDPI) {
                             ForEach([150, 300, 600], id: \.self) { Text("\($0) DPI").tag($0) }
                         }
                         .labelsHidden()
-                        .frame(width: 95)
+                        .frame(width: 76)
 
-                        Spacer()
+                        Spacer(minLength: 0)
                         Button(tr("Export Image…")) {
                             model.exportImage()
                         }
+                        .fixedSize()
                         .disabled(!model.canExportImage)
                     }
+                    .controlSize(.small)
                 }
 
                 Divider()
@@ -888,8 +893,10 @@ struct LoadDataInspector: View {
                         .labelsHidden()
                         Spacer()
                         Button(tr("Export Log…")) { model.exportWorkflowLog() }
+                            .fixedSize()
                             .disabled(!model.canExportWorkflowLog || model.preview)
                     }
+                    .controlSize(.small)
                 }
             }
             .padding(14)
@@ -904,21 +911,30 @@ struct ParameterInspector: View {
     private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
     @State private var expanded: String?
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack { Text(tr("PARAMETERS")).font(.caption.weight(.semibold)).tracking(1); Spacer(); Image(systemName: "slider.horizontal.3") }.foregroundStyle(.secondary)
-                if model.section == .load {
-                    LoadDataInspector(model: model)
-                } else {
-                    ForEach(CommandCatalog.forms(for: model.section)) { form in
-                        DisclosureGroup(isExpanded: Binding(get: { expanded == form.id }, set: { expanded = $0 ? form.id : nil })) {
-                            CommandEditor(model: model, form: form).padding(.top, 10)
-                        } label: { Text(tr(form.title)).font(.callout.weight(.medium)) }
-                        Divider()
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text(tr("PARAMETERS")).font(.title3.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("inspector.title")
+                    if model.section == .load {
+                        LoadDataInspector(model: model)
+                    } else {
+                        ForEach(CommandCatalog.forms(for: model.section)) { form in
+                            DisclosureGroup(isExpanded: Binding(get: { expanded == form.id }, set: { expanded = $0 ? form.id : nil })) {
+                                CommandEditor(model: model, form: form).padding(.top, 10)
+                            } label: { Text(tr(form.title)).font(.callout.weight(.medium)) }
+                            Divider()
+                        }
+                        Text(tr("Pixel and energy indices start at 0. Crop/ROI upper bounds are exclusive. Unsupported engine methods stay disabled.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
-                    Text(tr("Pixel and energy indices start at 0. Crop/ROI upper bounds are exclusive. Unsupported engine methods stay disabled.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-            }.padding(18)
+                // Keep padding inside the proposed split-column width. Intrinsic
+                // picker sizes must not expand the scroll document beyond it.
+                .frame(width: max(0, geometry.size.width - 2 * Theme.inspectorInset), alignment: .topLeading)
+                .padding(.horizontal, Theme.inspectorInset)
+                .padding(.vertical, 22)
+            }
         }.inspectorBackground()
         .onChange(of: model.section, initial: true) { _, section in expanded = CommandCatalog.forms(for: section).first?.id }
     }

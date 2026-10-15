@@ -35,7 +35,7 @@ def test_hello_is_real_process_and_advertises_actual_dispatch():
     replies, process = run_engine([request("hello")])
     hello = replies[0]
     assert hello["ok"] and hello["id"] == 1
-    assert hello["result"]["engine_version"] == "3.3.0"
+    assert hello["result"]["engine_version"] == "3.3.1"
     assert hello["result"]["protocol"] == 1
     methods = hello["result"]["capabilities"]
     assert len(methods) == len(set(methods))

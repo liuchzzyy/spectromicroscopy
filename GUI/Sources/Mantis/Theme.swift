@@ -15,6 +15,7 @@ enum Theme {
     static let contentInset: CGFloat = 24
     static let sectionSpacing: CGFloat = 16
     static let cardInset: CGFloat = 16
+    static let inspectorInset: CGFloat = 20
     static let sidebarInset: CGFloat = 20
     static let sidebarIconWidth: CGFloat = 20
     static let sidebarIconSpacing: CGFloat = 8

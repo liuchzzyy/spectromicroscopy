@@ -270,12 +270,12 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertThrowsError(try Snapshot.decode(JSONSerialization.data(withJSONObject: raw)))
     }
     func testPhysicalPixelResolutionAndColorbarLimits() throws {
-        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [10.0, 10.025, 10.050], unit: "µm"), "25 nm")
-        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [3.0, 3.04, 3.08], unit: "µm"), "40 nm")
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [10.0, 10.025, 10.050], unit: "µm"), "0.025000 µm")
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [3.0, 3.04, 3.08], unit: "µm"), "0.040000 µm")
         XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [0, 1, 3], unit: "µm"), "—")
         XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [0, 1], unit: nil), "—")
         XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [0, 1], unit: "mm"), "—")
-        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [1.0, 1.1], unit: "μm"), "100 nm")
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [1.0, 1.1], unit: "μm"), "0.10000 μm")
         let image = try JSONDecoder().decode(ScientificImage.self, from: Data(#"{"title":"Intensity","width":2,"height":2,"full_width":2,"full_height":2,"values":[4,6,5,7],"minimum":0,"maximum":10}"#.utf8))
         let model = WorkspaceModel(preview: true)
         model.contrastLow = 0.2
@@ -327,6 +327,22 @@ final class WorkspaceTests: XCTestCase {
                                     "spatial": ["x": [0.0, 0.05], "y": [0.0, 0.05], "unit": "µm"]]
         return try Snapshot.decode(JSONSerialization.data(withJSONObject: value))
     }
+    func testSourceResolutionUsesFiveSignificantDigitsWithoutUnitConversion() throws {
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try spatialFixture())) as? [String: Any])
+        json["spatial"] = ["x": [0.0, 0.013000000268220901], "y": [0.0, 0.017000000923871994],
+                           "unit": "µm", "x_pixel_size": 0.013000000268220901, "y_pixel_size": 0.017000000923871994]
+        let source = try Snapshot.decode(JSONSerialization.data(withJSONObject: json))
+        let model = WorkspaceModel(preview: true)
+        model.accept(source, method: "open", target: .load)
+        let original = model.sourceSummaryRows[0].suffix(2).map(\.value)
+        XCTAssertEqual(original, ["0.013000 µm", "0.017000 µm"])
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [0, 0.05], unit: "µm"), "0.050000 µm")
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [], unit: "nm", sourceValue: 13.0), "13.000 nm")
+        XCTAssertEqual(WorkspaceModel.pixelResolution(axis: [], unit: "nm", sourceValue: 123456), "1.2346e+05 nm")
+        model.zoom(to: 2)
+        model.accept(source, method: "view", target: .load)
+        XCTAssertEqual(model.sourceSummaryRows[0].suffix(2).map(\.value), original)
+    }
     func testSourceSummaryCollapsesMetadataIntoOneRow() throws {
         let model = WorkspaceModel(preview: true)
         model.accept(try spatialFixture(), method: "open", target: .load)
@@ -335,10 +351,52 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(rows[0].map(\.label),
                        ["SHAPE", "SIGNAL", "Energy", "Energy range", "X resolution / pixel", "Y resolution / pixel"])
         XCTAssertEqual(rows[0].map(\.value),
-                       ["2 × 2 × 2", "Optical density", "2", "280.000–281.000 eV", "50 nm", "50 nm"])
+                       ["2 × 2 × 2", "Optical density", "2", "280.000–281.000 eV", "0.050000 µm", "0.050000 µm"])
         XCTAssertEqual(rows[0].map { InterfaceText.value($0.value, language: .simplifiedChinese) },
-                       ["2 × 2 × 2", "光密度", "2", "280.000–281.000 eV", "50 nm", "50 nm"],
+                       ["2 × 2 × 2", "光密度", "2", "280.000–281.000 eV", "0.050000 µm", "0.050000 µm"],
                        "The view renders every cell through the localization table, leaving numbers and units intact")
+    }
+    func testDeclaredODHasOnlyODSignalAndMatchesEnginePayload() throws {
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Optical density"))) as? [String: Any])
+        json["input_is_od"] = true
+        json["display"] = "od"
+        let model = WorkspaceModel(preview: true)
+        model.openAsOpticalDensity = true
+        model.accept(try Snapshot.decode(JSONSerialization.data(withJSONObject: json)), method: "open", target: .load)
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:od"])
+        XCTAssertEqual(model.display, "od")
+        XCTAssertEqual(model.selectedSignalOptionID, "display:od")
+        XCTAssertEqual(model.viewParameters()["display"], .string("od"))
+        XCTAssertFalse(model.selectSignal("display:intensity"))
+        model.openAsOpticalDensity = false
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:od"], "Next-file checkbox must not reinterpret current data")
+    }
+    func testRecordingHistoryKeepsImportedSignalSemantics() throws {
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Optical density"))) as? [String: Any])
+        json["input_is_od"] = true
+        json["display"] = "od"
+        let model = WorkspaceModel(preview: true)
+        model.accept(try Snapshot.decode(JSONSerialization.data(withJSONObject: json)), method: "open", target: .load)
+        model.record("note", ["description": .string("display only")])
+        XCTAssertEqual(model.snapshot?.input_is_od, true)
+        XCTAssertEqual(model.snapshot?.display, "od")
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:od"])
+    }
+    func testRawImportResetsSignalThenNormalizationEnablesOD() throws {
+        let model = WorkspaceModel(preview: true)
+        model.display = "od"
+        model.accept(try fixture(normalized: false), method: "open", target: .load)
+        XCTAssertEqual(model.display, "intensity", "A newly opened raw file cannot inherit OD from the previous file")
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:intensity"])
+        XCTAssertEqual(model.selectedSignalOptionID, "display:intensity")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Optical density"))) as? [String: Any])
+        json["input_is_od"] = false
+        json["display"] = "od"
+        model.accept(try Snapshot.decode(JSONSerialization.data(withJSONObject: json)), method: "normalize", target: .preprocess)
+        XCTAssertEqual(model.display, "od", "The selector must reflect the signal actually returned by normalize")
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:intensity", "display:od"])
+        XCTAssertTrue(model.selectSignal("display:intensity"))
+        XCTAssertEqual(model.viewParameters()["display"], .string("intensity"))
     }
     func testSignalPickerMergesDisplayAndImageSelectionIntoOneControl() throws {
         let model = WorkspaceModel(preview: true)

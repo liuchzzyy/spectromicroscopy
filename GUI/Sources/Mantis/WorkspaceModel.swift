@@ -253,9 +253,9 @@ final class WorkspaceModel: ObservableObject {
             SourceSummaryCell(label: "Energy", value: snapshot?.energies.count.description ?? "—"),
             SourceSummaryCell(label: "Energy range", value: range),
             SourceSummaryCell(label: "X resolution / pixel",
-                              value: Self.pixelResolution(axis: snapshot?.spatial?.x ?? [], unit: snapshot?.spatial?.unit)),
+                              value: Self.pixelResolution(axis: snapshot?.spatial?.x ?? [], unit: snapshot?.spatial?.unit, sourceValue: snapshot?.spatial?.x_pixel_size)),
             SourceSummaryCell(label: "Y resolution / pixel",
-                              value: Self.pixelResolution(axis: snapshot?.spatial?.y ?? [], unit: snapshot?.spatial?.unit)),
+                              value: Self.pixelResolution(axis: snapshot?.spatial?.y ?? [], unit: snapshot?.spatial?.unit, sourceValue: snapshot?.spatial?.y_pixel_size)),
         ]]
     }
     struct SignalOption: Identifiable, Hashable {
@@ -271,7 +271,9 @@ final class WorkspaceModel: ObservableObject {
     var signalOptions: [SignalOption] {
         var options: [SignalOption] = []
         if showsStackSignal {
-            options.append(SignalOption(id: "display:intensity", title: "Intensity"))
+            if snapshot?.input_is_od != true {
+                options.append(SignalOption(id: "display:intensity", title: "Intensity"))
+            }
             if canDisplayOpticalDensity { options.append(SignalOption(id: "display:od", title: "Optical density")) }
         }
         for (index, image) in availableImages.enumerated() where !showsStackSignal || index > 0 {
@@ -373,6 +375,11 @@ final class WorkspaceModel: ObservableObject {
     func accept(_ next: Snapshot, method: String, target: WorkflowSection) {
         if snapshot?.theta_index != next.theta_index { results.removeAll() }
         snapshot = next; energyIndex = next.energy_index; thetaIndex = next.theta_index ?? 0
+        // The engine owns current-data semantics. The import checkbox belongs to
+        // the next file and must never relabel an already loaded stack.
+        if let signal = next.display { display = signal }
+        else if next.images.first?.title == "Optical density" { display = "od" }
+        else if next.images.first?.title == "Intensity" { display = "intensity" }
         if !next.normalized { selectedDataGroups.remove("normalization") }
         else if ["open", "build_stack", "normalize"].contains(method) &&
                     selectedDataGroups == ["processed", "raw", "analysis", "spectra"] {
@@ -405,14 +412,17 @@ final class WorkspaceModel: ObservableObject {
         interactionPoint = nil
         rois.removeAll(); selectedROIIndex = nil; selectedNonROISeries = "All spectra"; roiWarning = nil
     }
-    static func pixelResolution(axis: [Double], unit: String?) -> String {
+    static func pixelResolution(axis: [Double], unit: String?, sourceValue: Double? = nil) -> String {
+        // Five significant digits are display-only; source metadata and exports
+        // retain full precision and the source unit, independently of zoom.
+        if let sourceValue, sourceValue.isFinite, sourceValue > 0, let unit {
+            return String(format: "%#.5g %@", sourceValue, unit)
+        }
         guard let unit, ["µm", "μm", "um", "nm"].contains(unit), axis.count >= 2 else { return "—" }
         let steps = zip(axis, axis.dropFirst()).map { abs($1 - $0) }
         guard let first = steps.first, first.isFinite, first > 0,
               steps.allSatisfy({ $0.isFinite && abs($0 - first) <= max(1e-9, first * 1e-3) }) else { return "—" }
-        let nm = unit == "nm" ? first : first * 1000
-        guard nm.isFinite, nm > 0 else { return "—" }
-        return nm < 1000 ? String(format: "%.4g nm", nm) : String(format: "%.4g µm", nm / 1000)
+        return String(format: "%#.5g %@", first, unit)
     }
     func displayLimits(for image: ScientificImage) -> (lower: Double, upper: Double)? {
         guard image.channels != 3, let low = image.minimum ?? image.values.min(),
@@ -570,7 +580,7 @@ final class WorkspaceModel: ObservableObject {
         if let s = snapshot {
             var h = s.history
             h.append(HistoryEntry(method: method, params: params))
-            let updated = Snapshot(source: s.source, shape: s.shape, energies: s.energies, normalized: s.normalized, pca_ready: s.pca_ready, clusters_ready: s.clusters_ready, energy_index: s.energy_index, selected_x: s.selected_x, selected_y: s.selected_y, images: s.images, spectra: s.spectra, metrics: s.metrics, spatial: s.spatial, history: h, theta: s.theta, theta_index: s.theta_index)
+            let updated = Snapshot(source: s.source, shape: s.shape, energies: s.energies, normalized: s.normalized, pca_ready: s.pca_ready, clusters_ready: s.clusters_ready, energy_index: s.energy_index, selected_x: s.selected_x, selected_y: s.selected_y, images: s.images, spectra: s.spectra, metrics: s.metrics, spatial: s.spatial, history: h, theta: s.theta, theta_index: s.theta_index, input_is_od: s.input_is_od, display: s.display)
             snapshot = updated
             stackView = updated
         }

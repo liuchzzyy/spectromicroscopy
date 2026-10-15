@@ -63,6 +63,31 @@ def test_session_opens_plain_normalized_variant_with_correct_axes(tmp_path):
     json.dumps(result, allow_nan=False)
 
 
+def test_source_pixel_sizes_are_exact_and_stable_across_view_and_crop(tmp_path):
+    from mantis_xray.core.session import Session
+
+    path = tmp_path / "source-pixel-size.hdf5"
+    write_stack(path, "spectroscopy_normalized", shape=(6, 5, 4))
+    x_size, y_size = 0.013000000268220901, 0.017000000923871994
+    with h5py.File(path, "r+") as file:
+        file["SpecNormalized/x_pixel_size"][0] = x_size
+        file["SpecNormalized/y_pixel_size"][0] = y_size
+    session = Session()
+    opened = session.dispatch("open", {"path": str(path)})
+    assert opened["spatial"]["x_pixel_size"] == x_size
+    assert opened["spatial"]["y_pixel_size"] == y_size
+    zoomed = session.dispatch("view", {"viewport": [1, 1, 4, 4], "energy_index": 3})
+    cropped = session.dispatch("crop", {"bounds": [1, 1, 4, 4]})
+    for snapshot in (zoomed, cropped):
+        assert snapshot["spatial"]["x_pixel_size"] == x_size
+        assert snapshot["spatial"]["y_pixel_size"] == y_size
+    for fmt in ("npz", "hdf5"):
+        destination = tmp_path / f"preserved-pixel-size.{fmt}"
+        session.dispatch("export", {"path": str(destination), "format": fmt})
+        restored = Session().dispatch("open", {"path": str(destination)})
+        assert restored["spatial"] == cropped["spatial"]
+
+
 def test_mistral_reader_closes_file_when_dataset_is_malformed(tmp_path, monkeypatch):
     from mantis_xray.core.session import Session
     path = tmp_path / 'broken.hdf5'

@@ -32,6 +32,9 @@ public struct SpatialAxes: Codable, Sendable {
     public let x: [Double]
     public let y: [Double]
     public let unit: String?
+    /// Unrounded pixel sizes from the source metadata, in `unit`.
+    public let x_pixel_size: Double?
+    public let y_pixel_size: Double?
 }
 public struct Spectrum: Codable, Sendable, Identifiable {
     public var id: String { name }
@@ -81,6 +84,8 @@ public struct Snapshot: Codable, Sendable {
     public let shape: [Int]
     public let energies: [Double]
     public let normalized: Bool
+    public let input_is_od: Bool?
+    public let display: String?
     public let pca_ready: Bool
     public let clusters_ready: Bool
     public let energy_index: Int
@@ -93,8 +98,9 @@ public struct Snapshot: Codable, Sendable {
     public let history: [HistoryEntry]
     public let theta: [Double]?
     public let theta_index: Int?
-    public init(source: String, shape: [Int], energies: [Double], normalized: Bool, pca_ready: Bool, clusters_ready: Bool, energy_index: Int, selected_x: Int, selected_y: Int, images: [ScientificImage], spectra: [Spectrum], metrics: [String: JSONValue], spatial: SpatialAxes? = nil, history: [HistoryEntry] = [], theta: [Double]? = nil, theta_index: Int? = nil) {
+    public init(source: String, shape: [Int], energies: [Double], normalized: Bool, pca_ready: Bool, clusters_ready: Bool, energy_index: Int, selected_x: Int, selected_y: Int, images: [ScientificImage], spectra: [Spectrum], metrics: [String: JSONValue], spatial: SpatialAxes? = nil, history: [HistoryEntry] = [], theta: [Double]? = nil, theta_index: Int? = nil, input_is_od: Bool? = nil, display: String? = nil) {
         self.source = source; self.shape = shape; self.energies = energies
+        self.input_is_od = input_is_od; self.display = display
         self.normalized = normalized; self.pca_ready = pca_ready; self.clusters_ready = clusters_ready
         self.energy_index = energy_index; self.selected_x = selected_x; self.selected_y = selected_y
         self.images = images; self.spectra = spectra; self.metrics = metrics
@@ -108,10 +114,17 @@ public struct Snapshot: Codable, Sendable {
               (0..<snapshot.shape[0]).contains(snapshot.selected_x), (0..<snapshot.shape[1]).contains(snapshot.selected_y) else {
             throw EngineFailure("invalid_snapshot", "Invalid stack shape, energy axis or selected pixel.")
         }
+        if let display = snapshot.display, !["intensity", "od"].contains(display) {
+            throw EngineFailure("invalid_snapshot", "Invalid display signal.")
+        }
+        if snapshot.input_is_od == true && (!snapshot.normalized || snapshot.display == "intensity") {
+            throw EngineFailure("invalid_snapshot", "An OD-only source cannot display intensity.")
+        }
         if let spatial = snapshot.spatial {
             guard spatial.x.count == snapshot.shape[0], spatial.y.count == snapshot.shape[1],
                   spatial.x.allSatisfy(\.isFinite), spatial.y.allSatisfy(\.isFinite),
-                  spatial.unit == nil || spatial.unit?.isEmpty == false else {
+                  spatial.unit == nil || spatial.unit?.isEmpty == false,
+                  [spatial.x_pixel_size, spatial.y_pixel_size].compactMap({ $0 }).allSatisfy({ $0.isFinite && $0 > 0 }) else {
                 throw EngineFailure("invalid_snapshot", "Invalid spatial coordinates or units.")
             }
         }

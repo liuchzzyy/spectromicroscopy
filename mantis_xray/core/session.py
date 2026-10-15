@@ -115,12 +115,14 @@ class Session:
         self.history = []
         self.results = {}
         self.normalized = False
+        self.input_is_od = self._original_input_is_od = False
         self.energy_index = self.selected_x = self.selected_y = 0
         self.display = "intensity"
         self.roi_mask = None
         self.rois = []
         self.viewport = None
         self.spatial_unit = None
+        self.pixel_sizes = {}
         self._original = None
         self._raw_original = None
         self._last_snapshot = None
@@ -302,7 +304,9 @@ class Session:
         self._protected_paths.update(files)
         self.history, self.results = [], {}
         self.normalized, self.display = False, "intensity"
+        self.input_is_od = self._original_input_is_od = False
         self.viewport, self.spatial_unit = None, None
+        self.pixel_sizes = {}
         self.energy_index = self.selected_x = self.selected_y = 0
         self.roi_mask = None
         self.rois = []
@@ -318,6 +322,8 @@ class Session:
             raise SessionError(f"File not found: {path}", "file_error")
         raw_original = None
         spatial_unit = None
+        pixel_sizes = {}
+        stored_input_is_od = False
         embedded_od = None
         embedded_i0 = embedded_i0_energies = None
         if path.suffix.lower() == ".npz":
@@ -331,6 +337,12 @@ class Session:
                     if raw_unit.shape != ():
                         raise SessionError("spatial_unit must be a scalar string")
                     spatial_unit = str(raw_unit.item()) or None
+                pixel_sizes = {key: float(archive[key].item()) for key in ("x_pixel_size", "y_pixel_size") if key in archive}
+                if "input_is_od" in archive:
+                    flag = archive["input_is_od"]
+                    if flag.shape != () or flag.dtype.kind != "b":
+                        raise SessionError("input_is_od must be a scalar boolean")
+                    stored_input_is_od = bool(flag.item())
                 embedded_od = archive.get("od")
                 embedded_i0 = archive.get("i0")
                 embedded_i0_energies = archive.get("i0_energies", stack.ev)
@@ -349,6 +361,13 @@ class Session:
                     if "provenance/spatial_unit" in archive:
                         raw_unit = archive["provenance/spatial_unit"][()]
                         spatial_unit = (raw_unit.decode("utf-8") if isinstance(raw_unit, bytes) else str(raw_unit)) or None
+                    pixel_sizes = {key: float(archive[f"provenance/{key}"][()]) for key in ("x_pixel_size", "y_pixel_size")
+                                   if f"provenance/{key}" in archive}
+                    if "provenance/input_is_od" in archive:
+                        flag = np.asarray(archive["provenance/input_is_od"][()])
+                        if flag.shape != () or flag.dtype.kind != "b":
+                            raise SessionError("input_is_od must be a scalar boolean")
+                        stored_input_is_od = bool(flag.item())
                     embedded_od = read("normalization/od")
                     embedded_i0 = read("normalization/i0")
                     embedded_i0_energies = read("normalization/energy")
@@ -390,7 +409,8 @@ class Session:
             if embedded_od is None and not pre_normalized:
                 stack.calculate_optical_density()
             stack.fill_h5_struct_normalization()
-        if pre_normalized:
+        input_is_od = pre_normalized or stored_input_is_od
+        if input_is_od:
             stack.UsePreNormalizedData()
         # Only recognized source metadata supplies a physical unit. Coordinate arrays
         # alone (e.g. NPZ fallback indices) do not establish micrometers.
@@ -409,6 +429,8 @@ class Session:
                 if ("SpecNormalized/x_pixel_size" in source_file and
                         "SpecNormalized/y_pixel_size" in source_file):
                     spatial_unit = "µm"  # MISTRAL pixel-size fields are in micrometers.
+                    pixel_sizes = {key: float(np.asarray(source_file[f"SpecNormalized/{key}"][()]).item())
+                                   for key in ("x_pixel_size", "y_pixel_size")}
                 elif "exchange/x" in source_file and "exchange/y" in source_file:
                     xunit = source_file["exchange/x"].attrs.get("units")
                     yunit = source_file["exchange/y"].attrs.get("units")
@@ -418,19 +440,30 @@ class Session:
                         yunit = yunit.decode("utf-8", errors="replace")
                     if xunit == yunit and isinstance(xunit, str) and xunit.strip() and "\ufffd" not in xunit:
                         spatial_unit = xunit.strip()
+        # Calibrated axes are a fallback only when no explicit pixel size exists.
+        # Capture once at import, not from a cropped/zoomed preview.
+        if spatial_unit is not None:
+            for key, axis in (("x_pixel_size", stack.x_dist), ("y_pixel_size", stack.y_dist)):
+                steps = np.abs(np.diff(np.asarray(axis, dtype=float)))
+                if key not in pixel_sizes and steps.size and steps[0] > 0 and np.allclose(steps, steps[0], rtol=1e-3, atol=1e-9):
+                    pixel_sizes[key] = float(steps[0])
+        if any(not np.isfinite(value) or value <= 0 for value in pixel_sizes.values()):
+            raise SessionError("Source pixel sizes must be positive finite numbers")
         self.stack = stack
         self.spatial_unit = spatial_unit
+        self.pixel_sizes = pixel_sizes
         self.viewport = None
         self.source = str(path)
         self._source_paths = [path]
         self._protected_paths.add(path)
         self.analysis = analyze.analyze(stack)
         self.history, self.results = [], {}
-        self.normalized = pre_normalized or embedded_od is not None or embedded_i0 is not None
+        self.input_is_od = self._original_input_is_od = input_is_od
+        self.normalized = input_is_od or embedded_od is not None or embedded_i0 is not None
         self.energy_index = self.selected_x = self.selected_y = 0
         self.roi_mask = None
         self.rois = []
-        self.display = "intensity"
+        self.display = "od" if input_is_od else "intensity"
         self._original = copy.deepcopy(stack)
         self._raw_original = raw_original if raw_original is not None else copy.deepcopy(stack)
         self.record("open", {"path": str(path), "sha256": _hash(path),
@@ -518,6 +551,8 @@ class Session:
         if mode == "file":
             self._protected_paths.add(Path(params["path"]))
         self.normalized = True
+        if mode == "pre_normalized":
+            self.input_is_od = True
         self._invalidate()
         self.display = "od"
         self.record("normalize", params)
@@ -537,6 +572,8 @@ class Session:
         display = self.display if display is None else display
         if display not in ("intensity", "od"):
             raise SessionError("display must be intensity or od")
+        if self.input_is_od:
+            display = "od"  # No I/I₀ can be recovered from an OD-only input.
         if display == "od":
             self.require_normalized()
         if roi is not None and polygon is not None:
@@ -597,8 +634,10 @@ class Session:
                                  self.stack.x_dist if x is None else x, self.stack.y_dist if y is None else y)
         self.stack = stack
         self.viewport = None
-        self.normalized = False
-        self.display = "intensity"
+        self.normalized = self.input_is_od
+        if self.input_is_od:
+            stack.UsePreNormalizedData()
+        self.display = "od" if self.input_is_od else "intensity"
         self.energy_index = min(self.energy_index, stack.n_ev-1)
         self.selected_x = min(self.selected_x, stack.n_cols-1)
         self.selected_y = min(self.selected_y, stack.n_rows-1)
@@ -642,10 +681,14 @@ class Session:
     def reset(self):
         self.require_data()
         self.stack = copy.deepcopy(self._original)
-        self.stack.reset_i0()
-        self.stack.od4d = 0
-        self.normalized = False
-        self.display = "intensity"
+        self.input_is_od = self._original_input_is_od
+        if self.input_is_od:
+            self.stack.UsePreNormalizedData()
+        else:
+            self.stack.reset_i0()
+            self.stack.od4d = 0
+        self.normalized = self.input_is_od
+        self.display = "od" if self.input_is_od else "intensity"
         self.energy_index = self.selected_x = self.selected_y = 0
         self._invalidate()
         self.record("reset", {})
@@ -831,6 +874,8 @@ class Session:
             arrays["i0_energies"] = np.asarray(self.stack.evi0)
         if self.spatial_unit is not None:
             arrays["spatial_unit"] = np.asarray(self.spatial_unit)
+        arrays.update({key: np.asarray(value) for key, value in self.pixel_sizes.items()})
+        arrays["input_is_od"] = np.asarray(self.input_is_od)
         def flatten(prefix, value):
             if isinstance(value, dict):
                 for name, child in value.items():
@@ -842,7 +887,7 @@ class Session:
                 arrays[key] = np.asarray(value)
         if include is not None:
             prefixes = {
-                "processed": ("data", "energies", "x", "y", "theta", "spatial_unit"),
+                "processed": ("data", "energies", "x", "y", "theta", "spatial_unit", "x_pixel_size", "y_pixel_size", "input_is_od"),
                 "raw": ("raw_data", "raw_energies", "raw_x", "raw_y", "raw_theta"),
                 "normalization": ("od", "i0", "i0_energies"),
             }
@@ -902,7 +947,8 @@ class Session:
                            "theta": "exchange/theta", "raw_data": "raw/data", "raw_energies": "raw/energy",
                            "raw_x": "raw/x", "raw_y": "raw/y", "raw_theta": "raw/theta",
                            "od": "normalization/od", "i0": "normalization/i0",
-                           "i0_energies": "normalization/energy", "spatial_unit": "provenance/spatial_unit"}
+                           "i0_energies": "normalization/energy", "spatial_unit": "provenance/spatial_unit",
+                           "x_pixel_size": "provenance/x_pixel_size", "y_pixel_size": "provenance/y_pixel_size", "input_is_od": "provenance/input_is_od"}
                 with h5py.File(temporary, "w") as archive:
                     archive.attrs["mantis_session_version"] = 1
                     archive.create_dataset("implements", data="information:exchange:spectromicroscopy")
@@ -998,6 +1044,7 @@ class Session:
                 spectra.append(spectrum_record("Full image", self.stack.ev, values.mean(axis=(0, 1))))
         result = {"source": self.source, "shape": [int(dimension) for dimension in self.stack.absdata.shape],
                   "energies": self.stack.ev.tolist(), "normalized": self.normalized,
+                  "input_is_od": self.input_is_od, "display": self.display,
                   "pca_ready": bool(self.analysis.pca_calculated),
                   "clusters_ready": bool(self.analysis.clusters_calculated),
                   "energy_index": self.energy_index, "selected_x": self.selected_x,
@@ -1005,7 +1052,7 @@ class Session:
                   "metrics": {str(k): str(v) for k, v in (metrics or {}).items()},
                   "spatial": {"x": np.asarray(self.stack.x_dist, dtype=float).tolist(),
                               "y": np.asarray(self.stack.y_dist, dtype=float).tolist(),
-                              "unit": self.spatial_unit},
+                              "unit": self.spatial_unit, **self.pixel_sizes},
                   "history": copy.deepcopy(self.history)}
         json.dumps(result, allow_nan=False)
         self._last_snapshot = copy.deepcopy(result)

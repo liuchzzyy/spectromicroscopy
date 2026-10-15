@@ -23,6 +23,45 @@ def fixture_file(tmp_path, data=None, energies=None, **extra):
     return path, data, energies
 
 
+def test_declared_od_import_never_masquerades_as_intensity(tmp_path):
+    source, data, _ = fixture_file(tmp_path, data=np.linspace(-0.2, 1.5, 30).reshape(3, 2, 5))
+    session = session_class()()
+    opened = session.dispatch("open", {"path": str(source), "pre_normalized": True})
+    assert opened["input_is_od"] is True
+    assert opened["display"] == "od"
+    assert opened["images"][0]["title"] == "Optical density"
+    np.testing.assert_array_equal(session.stack.absdata, data)
+    viewed = session.dispatch("view", {"display": "intensity", "energy_index": 1})
+    assert viewed["display"] == "od", "An OD source has no recoverable raw intensity"
+    assert viewed["images"][0]["title"] == "Optical density"
+    np.testing.assert_array_equal(viewed["images"][0]["values"], data[:, :, 1].T.ravel())
+    cropped = session.dispatch("crop", {"bounds": [0, 0, 2, 2]})
+    assert cropped["normalized"] and cropped["input_is_od"]
+    assert cropped["display"] == "od"
+    reset = session.dispatch("reset", {})
+    assert reset["normalized"] and reset["input_is_od"]
+    assert reset["display"] == "od"
+    np.testing.assert_array_equal(session.stack.absdata, data)
+
+
+def test_od_only_numeric_export_reopens_without_relogging_negative_od(tmp_path):
+    source, data, _ = fixture_file(tmp_path, data=np.linspace(-0.2, 1.5, 30).reshape(3, 2, 5))
+    session = session_class()()
+    session.dispatch("open", {"path": str(source), "pre_normalized": True})
+    for fmt in ("npz", "hdf5"):
+        for include in (None, ["processed"]):
+            path = tmp_path / f"od-only-{include is not None}.{fmt}"
+            params = {"path": str(path), "format": fmt}
+            if include is not None:
+                params["include"] = include
+            session.dispatch("export", params)
+            restored_session = session_class()()
+            restored = restored_session.dispatch("open", {"path": str(path)})
+            assert restored["input_is_od"] and restored["normalized"]
+            assert restored["display"] == "od"
+            np.testing.assert_array_equal(restored_session.stack.od3d, data)
+
+
 def test_open_non_square_orientation_and_private_state(tmp_path):
     Session = session_class()
     path, data, energies = fixture_file(tmp_path)
@@ -104,6 +143,18 @@ def test_near_constant_histogram_preserves_values_and_representable_edges(tmp_pa
     assert np.all(np.diff(selected["roi_histogram_edges"]) > 0)
     assert session.stack is not None
     np.testing.assert_array_equal(session.stack.absdata, original)
+
+
+def test_coordinate_resolution_survives_single_pixel_crop(tmp_path):
+    source, _, _ = fixture_file(tmp_path, x=np.array([1391.7, 1391.75, 1391.8]),
+                                y=np.array([1541.2, 1541.3]), spatial_unit="µm")
+    session = session_class()()
+    opened = session.dispatch("open", {"path": str(source)})
+    assert opened["spatial"]["x_pixel_size"] == abs(1391.75 - 1391.7)
+    assert opened["spatial"]["y_pixel_size"] == abs(1541.3 - 1541.2)
+    cropped = session.dispatch("crop", {"bounds": [1, 0, 2, 1]})
+    assert cropped["spatial"]["x_pixel_size"] == opened["spatial"]["x_pixel_size"]
+    assert cropped["spatial"]["y_pixel_size"] == opened["spatial"]["y_pixel_size"]
 
 
 def test_spatial_axis_unit_is_only_reported_for_known_plugin_metadata(tmp_path):
@@ -258,7 +309,7 @@ def test_view_roi_and_processing_invalidation_reset(tmp_path):
     Session = session_class()
     path, data, _ = fixture_file(tmp_path)
     session = Session()
-    session.dispatch("open", {"path": str(path), "pre_normalized": True})
+    session.dispatch("open", {"path": str(path)})
     result = session.dispatch("view", {"energy_index": 3, "x": 2, "y": 1, "roi": [0, 0, 2, 2]})
     np.testing.assert_allclose(result["spectra"][1]["y"], data[:2, :2].mean(axis=(0, 1)))
     assert result["spectra"][0]["y"] == data[2, 1].tolist()
@@ -279,6 +330,9 @@ def test_view_roi_and_processing_invalidation_reset(tmp_path):
     np.testing.assert_allclose(multi_res["spectra"][2]["y"], data[1:3, 1:2].mean(axis=(0, 1)))
     with pytest.raises(ValueError, match="empty"):
         session.dispatch("view", {"roi": [0, 0, 0, 1]})
+    # Computed OD is invalidated by raw-intensity processing; OD-only inputs
+    # retain their semantics instead (covered separately above).
+    session.dispatch("normalize", {"mode": "roi", "bounds": [0, 0, 1, 1]})
     session.dispatch("pca", {"components": 2})
     result = session.dispatch("crop", {"bounds": [1, 0, 3, 2], "energy_range": [1, 4]})
     assert result["shape"] == [2, 2, 3]
