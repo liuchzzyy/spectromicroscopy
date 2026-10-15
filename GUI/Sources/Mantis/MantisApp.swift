@@ -48,6 +48,24 @@ enum MenuBarArtwork {
     }
 }
 
+@MainActor
+enum SmokeWindowSelection {
+    static func largestVisible(in windows: [NSWindow]) -> NSWindow? {
+        var selected: NSWindow?
+        var largestArea: CGFloat = 0
+        for window in windows {
+            guard window.isVisible, let view = window.contentView else { continue }
+            let bounds = view.bounds
+            let area = bounds.width * bounds.height
+            if selected == nil || area > largestArea {
+                selected = window
+                largestArea = area
+            }
+        }
+        return selected
+    }
+}
+
 @main
 struct MantisApp: App {
     @NSApplicationDelegateAdaptor(ApplicationDelegate.self) private var delegate
@@ -175,9 +193,7 @@ struct MantisApp: App {
             }
         }
         try? await Task.sleep(for: .milliseconds(300))
-        let window = NSApp.windows.filter { $0.isVisible && $0.contentView != nil }
-            .max { ($0.contentView?.bounds.width ?? 0) * ($0.contentView?.bounds.height ?? 0) <
-                   ($1.contentView?.bounds.width ?? 0) * ($1.contentView?.bounds.height ?? 0) }
+        let window: NSWindow? = SmokeWindowSelection.largestVisible(in: NSApp.windows)
         var record: [String: Any] = ["window_visible": window != nil, "content_width": window?.contentView?.bounds.width ?? 0, "content_height": window?.contentView?.bounds.height ?? 0, "connected": model.connected, "status": model.status, "section": model.section.rawValue, "image_count": model.availableImages.count, "pca_ready": model.snapshot?.pca_ready ?? false, "language": preferences.language.rawValue, "appearance": preferences.appearance.rawValue]
         if let snapshot = model.snapshot { record["shape"] = snapshot.shape; record["energy_count"] = snapshot.energies.count; record["normalized"] = snapshot.normalized; record["spatial_unit"] = snapshot.spatial?.unit ?? NSNull(); record["energy_first"] = snapshot.energies.first ?? 0; record["energy_last"] = snapshot.energies.last ?? 0 }
         if let image = model.image { record["image_width"] = image.width; record["image_height"] = image.height; record["visible_width"] = image.visibleWidth; record["visible_height"] = image.visibleHeight; record["visible_origin_x"] = image.x0; record["visible_origin_y"] = image.y0; record["histogram_count"] = image.histogram_counts?.reduce(0, +) ?? 0; record["roi_histogram_count"] = image.roi_histogram_counts?.reduce(0, +) ?? 0 }

@@ -38,6 +38,16 @@ def finite_array(value, name):
     return array
 
 
+def _image_histogram(array):
+    low, high = float(array.min()), float(array.max())
+    if low == high:
+        return np.histogram(array, bins=32)
+    # Adjacent floating-point values cannot support 32 distinct bin intervals.
+    # Reduce only the display bins; never round, smooth or change source values.
+    edges = np.unique(np.linspace(low, high, 33))
+    return np.histogram(array, bins=edges)
+
+
 def image_record(title, array_xy, viewport=None, full_shape=None):
     array = finite_array(array_xy, title)
     if array.ndim != 2 or 0 in array.shape:
@@ -52,7 +62,7 @@ def image_record(title, array_xy, viewport=None, full_shape=None):
     preview = array[np.ix_(xs, ys)].T
     # Statistics use every source pixel in the visible frame, not the sampled
     # 256×256 display preview. They do not modify or smooth scientific data.
-    counts, edges = np.histogram(array, bins=32)
+    counts, edges = _image_histogram(array)
     return {"title": str(title), "width": len(xs), "height": len(ys),
             "full_width": full_width, "full_height": full_height,
             "origin_x": origin_x, "origin_y": origin_y,
@@ -959,7 +969,7 @@ class Session:
                                    image_values, self.viewport, (self.stack.n_cols, self.stack.n_rows))]
         if self.roi_mask is not None and images is not None and images and images[0].get("title") in ("Intensity", "Optical density") and "histogram_counts" in images[0]:
             selected_pixels = values[:, :, self.energy_index][self.roi_mask]
-            counts, edges = np.histogram(selected_pixels, bins=32)
+            counts, edges = _image_histogram(selected_pixels)
             images[0]["roi_histogram_counts"] = counts.tolist()
             images[0]["roi_histogram_edges"] = edges.tolist()
             images[0]["roi_minimum"] = float(selected_pixels.min())

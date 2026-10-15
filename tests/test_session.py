@@ -85,6 +85,27 @@ def test_image_histogram_uses_all_source_pixels_not_preview_sampling():
     assert np.all(np.diff(constant["histogram_edges"]) > 0)
 
 
+def test_near_constant_histogram_preserves_values_and_representable_edges(tmp_path):
+    from mantis_xray.core.session import image_record
+    data = np.full((3, 2, 2), 10.0)
+    data[0, 0, :] = np.nextafter(10.0, np.inf)
+    original = data.copy()
+    image = image_record("Near constant", data[:, :, 0])
+    assert sum(image["histogram_counts"]) == 6
+    assert np.all(np.diff(image["histogram_edges"]) > 0)
+    assert image["minimum"] == data[:, :, 0].min()
+    assert image["maximum"] == data[:, :, 0].max()
+    assert image["values"] == data[:, :, 0].T.ravel().tolist()
+    session = session_class()()
+    path, _, _ = fixture_file(tmp_path, data=data)
+    session.dispatch("open", {"path": str(path)})
+    selected = session.dispatch("view", {"roi": [0, 0, 3, 2]})["images"][0]
+    assert sum(selected["roi_histogram_counts"]) == 6
+    assert np.all(np.diff(selected["roi_histogram_edges"]) > 0)
+    assert session.stack is not None
+    np.testing.assert_array_equal(session.stack.absdata, original)
+
+
 def test_spatial_axis_unit_is_only_reported_for_known_plugin_metadata(tmp_path):
     Session = session_class()
     source, _, _ = fixture_file(tmp_path)

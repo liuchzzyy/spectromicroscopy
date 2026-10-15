@@ -10,6 +10,23 @@ final class WorkspaceTests: XCTestCase {
         if let theta { value["theta"] = [0,90]; value["theta_index"] = theta }
         return try Snapshot.decode(JSONSerialization.data(withJSONObject: value))
     }
+    func testSmokeWindowSelectionUsesLargestVisibleContentAndExcludesHiddenWindows() throws {
+        let hidden = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1200, height: 900),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        let small = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 40, height: 30),
+                             styleMask: [.borderless], backing: .buffered, defer: false)
+        let large = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 60),
+                             styleMask: [.borderless], backing: .buffered, defer: false)
+        for window in [hidden, small, large] { window.isReleasedWhenClosed = false }
+        defer { for window in [hidden, small, large] { window.close() } }
+        small.orderBack(nil)
+        large.orderBack(nil)
+        XCTAssertTrue(SmokeWindowSelection.largestVisible(in: [hidden, small, large]) === large)
+        large.orderOut(nil)
+        XCTAssertTrue(SmokeWindowSelection.largestVisible(in: [hidden, small, large]) === small)
+        small.orderOut(nil)
+        XCTAssertNil(SmokeWindowSelection.largestVisible(in: [hidden, small, large]))
+    }
     func testImageExportAvailabilityChecksCurrentViewNotDataFormat() throws {
         let model = WorkspaceModel()
         model.handshake = try JSONDecoder().decode(EngineHello.self, from: Data(#"{"engine_version":"test","protocol":1,"capabilities":["export"]}"#.utf8))
