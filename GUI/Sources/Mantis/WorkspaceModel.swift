@@ -249,7 +249,7 @@ final class WorkspaceModel: ObservableObject {
         } ?? "—"
         return [[
             SourceSummaryCell(label: "SHAPE", value: snapshot?.shape.map(String.init).joined(separator: " × ") ?? "—"),
-            SourceSummaryCell(label: "SIGNAL", value: snapshot.map { $0.normalized ? "Optical density" : "Intensity" } ?? "—"),
+            SourceSummaryCell(label: "SIGNAL", value: snapshot.map { ($0.display == "od" || $0.input_is_od == true || $0.normalized) ? "Optical density" : "Intensity" } ?? "—"),
             SourceSummaryCell(label: "Energy", value: snapshot?.energies.count.description ?? "—"),
             SourceSummaryCell(label: "Energy range", value: range),
             SourceSummaryCell(label: "X resolution / pixel",
@@ -273,8 +273,10 @@ final class WorkspaceModel: ObservableObject {
         if showsStackSignal {
             if snapshot?.input_is_od != true {
                 options.append(SignalOption(id: "display:intensity", title: "Intensity"))
+                options.append(SignalOption(id: "display:od", title: "Optical density"))
+            } else {
+                options.append(SignalOption(id: "display:od", title: "Optical density"))
             }
-            if canDisplayOpticalDensity { options.append(SignalOption(id: "display:od", title: "Optical density")) }
         }
         for (index, image) in availableImages.enumerated() where !showsStackSignal || index > 0 {
             options.append(SignalOption(id: "image:\(index)", title: image.title))
@@ -557,7 +559,7 @@ final class WorkspaceModel: ObservableObject {
         case .section(let owner): return results[section] != nil && owner == section
         }
     }
-    var canDisplayOpticalDensity: Bool { snapshot?.normalized == true }
+    var canDisplayOpticalDensity: Bool { snapshot?.input_is_od == true || snapshot?.normalized == true }
     var canExportImage: Bool { !busy && !preview && snapshot != nil && supports("export") && showsEngineCurrentView }
     var canExport: Bool {
         guard !busy, !preview, snapshot != nil, supports("export") else { return false }

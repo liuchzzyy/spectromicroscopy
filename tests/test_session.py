@@ -23,6 +23,63 @@ def fixture_file(tmp_path, data=None, energies=None, **extra):
     return path, data, energies
 
 
+def test_intensity_to_od_function():
+    from mantis_xray.core.session import intensity_to_od
+    # 1D transmission
+    spec = np.array([0.9, 0.7, 0.5])
+    np.testing.assert_allclose(intensity_to_od(spec), -np.log(spec))
+
+    # 3D stack transmission (values <= 2.5 default to i0 = 1.0)
+    stack = np.array([[[0.8, 0.6], [0.7, 0.5]], [[0.9, 0.8], [0.85, 0.75]]])
+    od = intensity_to_od(stack)
+    assert od.shape == stack.shape
+    np.testing.assert_allclose(od, -np.log(stack))
+
+    # 3D stack with explicit 1D i0
+    i0 = np.array([1.2, 1.0])
+    od_i0 = intensity_to_od(stack, i0=i0)
+    assert od_i0.shape == stack.shape
+    np.testing.assert_allclose(od_i0[0, 0, 0], -np.log(0.8 / 1.2))
+    np.testing.assert_allclose(od_i0[0, 0, 1], -np.log(0.6 / 1.0))
+
+    # Raw counts (values > 2.5 default to max spatial intensity per energy)
+    raw = np.full((4, 4, 2), 10000.0)
+    raw[1:3, 1:3, :] = 3000.0
+    od_raw = intensity_to_od(raw)
+    np.testing.assert_allclose(od_raw[0, 0, 0], 0.0)
+    np.testing.assert_allclose(od_raw[1, 1, 0], -np.log(0.3))
+
+
+def test_intensity_input_allows_viewing_both_intensity_and_od(tmp_path):
+    # Transmission stack (values around 0.2 to 1.0)
+    data = np.linspace(0.2, 0.9, 30).reshape(3, 2, 5)
+    source, _, _ = fixture_file(tmp_path, data=data)
+    session = session_class()()
+    opened = session.dispatch("open", {"path": str(source), "pre_normalized": False})
+    assert opened["input_is_od"] is False
+    assert opened["display"] == "intensity"
+    assert opened["images"][0]["title"] == "Intensity"
+    np.testing.assert_allclose(opened["images"][0]["values"], data[:, :, 0].T.ravel())
+
+    # Switch to OD: converts intensity to OD on the fly
+    view_od = session.dispatch("view", {"display": "od", "energy_index": 0})
+    assert view_od["display"] == "od"
+    assert view_od["normalized"] is True
+    assert view_od["images"][0]["title"] == "Optical density"
+    np.testing.assert_allclose(view_od["images"][0]["values"], -np.log(data[:, :, 0].T.ravel()))
+
+    # Switch back to Intensity: shows original intensity
+    view_int = session.dispatch("view", {"display": "intensity", "energy_index": 0})
+    assert view_int["display"] == "intensity"
+    assert view_int["images"][0]["title"] == "Intensity"
+    np.testing.assert_allclose(view_int["images"][0]["values"], data[:, :, 0].T.ravel())
+
+    # Direct method dispatch to intensity_to_od
+    res = session.dispatch("intensity_to_od", {})
+    assert res["display"] == "od"
+    assert res["normalized"] is True
+
+
 def test_declared_od_import_never_masquerades_as_intensity(tmp_path):
     source, data, _ = fixture_file(tmp_path, data=np.linspace(-0.2, 1.5, 30).reshape(3, 2, 5))
     session = session_class()()

@@ -382,13 +382,47 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(model.snapshot?.display, "od")
         XCTAssertEqual(model.signalOptions.map(\.id), ["display:od"])
     }
+    func testIntensityInputOffersBothIntensityAndODOptionsAndAllowsConvertingToOD() throws {
+        let model = WorkspaceModel(preview: true)
+        // 1. Raw intensity input (input_is_od is false)
+        var rawJson = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Intensity", normalized: false))) as? [String: Any])
+        rawJson["input_is_od"] = false
+        rawJson["display"] = "intensity"
+        model.accept(try Snapshot.decode(JSONSerialization.data(withJSONObject: rawJson)), method: "open", target: .load)
+
+        // Dropdown box must have BOTH Intensity and OD options
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:intensity", "display:od"])
+        XCTAssertEqual(model.selectedSignalOptionID, "display:intensity")
+
+        // User chooses OD -> converted to OD
+        XCTAssertTrue(model.selectSignal("display:od"))
+        XCTAssertEqual(model.display, "od")
+        XCTAssertEqual(model.selectedSignalOptionID, "display:od")
+        XCTAssertEqual(model.viewParameters()["display"], .string("od"))
+
+        // User chooses Intensity -> switches back
+        XCTAssertTrue(model.selectSignal("display:intensity"))
+        XCTAssertEqual(model.display, "intensity")
+        XCTAssertEqual(model.selectedSignalOptionID, "display:intensity")
+        XCTAssertEqual(model.viewParameters()["display"], .string("intensity"))
+
+        // 2. Direct OD input (input_is_od is true) -> ONLY OD option
+        var odJson = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Optical density", normalized: true))) as? [String: Any])
+        odJson["input_is_od"] = true
+        odJson["display"] = "od"
+        model.accept(try Snapshot.decode(JSONSerialization.data(withJSONObject: odJson)), method: "open", target: .load)
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:od"])
+        XCTAssertFalse(model.selectSignal("display:intensity"))
+    }
     func testRawImportResetsSignalThenNormalizationEnablesOD() throws {
         let model = WorkspaceModel(preview: true)
         model.display = "od"
         model.accept(try fixture(normalized: false), method: "open", target: .load)
         XCTAssertEqual(model.display, "intensity", "A newly opened raw file cannot inherit OD from the previous file")
-        XCTAssertEqual(model.signalOptions.map(\.id), ["display:intensity"])
+        XCTAssertEqual(model.signalOptions.map(\.id), ["display:intensity", "display:od"], "Raw intensity import offers both Intensity and OD (convertible)")
         XCTAssertEqual(model.selectedSignalOptionID, "display:intensity")
+        XCTAssertTrue(model.selectSignal("display:od"), "OD can be selected and converted from intensity")
+        XCTAssertEqual(model.display, "od")
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(try fixture("Optical density"))) as? [String: Any])
         json["input_is_od"] = false
         json["display"] = "od"

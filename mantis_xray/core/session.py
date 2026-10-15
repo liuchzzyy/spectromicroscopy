@@ -18,7 +18,7 @@ with redirect_stdout(sys.stderr):
     from ..analysis import data_stack, data_struct, analyze
 
 
-BASE_METHODS = ("open", "normalize", "pca", "cluster", "view", "crop", "dark",
+BASE_METHODS = ("open", "normalize", "intensity_to_od", "to_od", "pca", "cluster", "view", "crop", "dark",
                 "remove_image", "reset", "despike", "align", "export", "inspect_file", "build_stack")
 
 
@@ -36,6 +36,71 @@ def finite_array(value, name):
     if not np.all(np.isfinite(array)):
         raise SessionError(f"{name} must contain only finite numbers")
     return array
+
+
+def intensity_to_od(intensity, i0=None, min_intensity=1e-7):
+    """Convert transmitted X-ray intensity to optical density (OD) via Beer-Lambert law.
+
+    OD = -ln(I / I0)
+
+    Parameters
+    ----------
+    intensity : array_like
+        Transmitted X-ray intensity (1D spectrum, 2D image, 3D stack, or 4D stack).
+    i0 : array_like or float, optional
+        Incident beam intensity I0.
+        - If provided as scalar or array, used directly.
+        - If None:
+            - If intensity values are normalized transmission (e.g. max <= 2.5),
+              i0 defaults to 1.0 (OD = -ln(I)).
+            - If intensity values are raw counts (max > 2.5), i0 defaults to the
+              maximum spatial intensity per energy channel (OD = -ln(I / max(I))).
+    min_intensity : float, optional
+        Small positive floor to prevent division by zero or log of non-positive numbers.
+        Default is 1e-7. If None, strict computation is performed without clipping.
+
+    Returns
+    -------
+    ndarray
+        Optical density array of the same shape as intensity.
+    """
+    arr = np.asarray(intensity, dtype=float)
+    if arr.size == 0:
+        return np.empty_like(arr)
+
+    if i0 is None:
+        finite_mask = np.isfinite(arr)
+        if not np.any(finite_mask):
+            raise ValueError("Intensity array contains no finite values")
+        max_val = np.nanmax(arr[finite_mask])
+        if max_val <= 2.5:
+            i0_val = 1.0
+        else:
+            if arr.ndim >= 3:
+                i0_val = np.nanmax(arr, axis=(0, 1), keepdims=True)
+            elif arr.ndim == 2:
+                i0_val = np.nanmax(arr, axis=0, keepdims=True)
+            else:
+                i0_val = np.nanmax(arr)
+    else:
+        i0_arr = np.asarray(i0, dtype=float)
+        if arr.ndim == 4 and i0_arr.ndim == 1 and i0_arr.shape[0] == arr.shape[2]:
+            i0_val = i0_arr[None, None, :, None]
+        elif arr.ndim == 4 and i0_arr.ndim == 2 and i0_arr.shape == (arr.shape[2], arr.shape[3]):
+            i0_val = i0_arr[None, None, :, :]
+        elif arr.ndim == 3 and i0_arr.ndim == 1 and i0_arr.shape[0] == arr.shape[2]:
+            i0_val = i0_arr[None, None, :]
+        else:
+            i0_val = i0_arr
+
+    if min_intensity is not None:
+        safe_i = np.maximum(arr, min_intensity)
+        safe_i0 = np.maximum(i0_val, min_intensity)
+        trans = np.maximum(safe_i / safe_i0, min_intensity)
+    else:
+        trans = arr / i0_val
+
+    return -np.log(trans)
 
 
 def _image_histogram(array):
@@ -558,6 +623,39 @@ class Session:
         self.record("normalize", params)
         return self.snapshot()
 
+    def ensure_od(self, i0=None):
+        if self.input_is_od:
+            return
+        if getattr(self.stack, "od3d", None) is not None and not (
+            isinstance(self.stack.od3d, (int, float)) and self.stack.od3d == 0
+        ) and self.normalized:
+            return
+        raw = self.stack.absdata if self.stack.stack4D is None else self.stack.stack4D
+        i0_param = i0
+        if i0_param is None and getattr(self.stack, "i0data", None) is not None:
+            if np.any(self.stack.i0data):
+                i0_param = self.stack.i0data
+        od_data = intensity_to_od(raw, i0=i0_param)
+        if self.stack.stack4D is not None:
+            self.stack.od4d = od_data
+            self.stack.od3d = od_data[:, :, :, 0].copy()
+        else:
+            self.stack.od3d = od_data
+        self.stack.od = self.stack.od3d.reshape(-1, self.stack.n_ev, order="F").copy()
+        self.normalized = True
+
+    def intensity_to_od(self, i0=None):
+        self.require_data()
+        if self.input_is_od:
+            return self.snapshot()
+        self.ensure_od(i0=i0)
+        self.display = "od"
+        self._invalidate()
+        self.record("intensity_to_od", {"i0": i0.tolist() if isinstance(i0, np.ndarray) else i0})
+        return self.snapshot()
+
+    to_od = intensity_to_od
+
     def view(self, energy_index=None, x=None, y=None, display=None, roi=None, polygon=None, viewport=None, rois=None):
         self.require_data()
         if viewport is not None:
@@ -575,7 +673,7 @@ class Session:
         if self.input_is_od:
             display = "od"  # No I/I₀ can be recovered from an OD-only input.
         if display == "od":
-            self.require_normalized()
+            self.ensure_od()
         if roi is not None and polygon is not None:
             raise SessionError("Choose either rectangle ROI or polygon")
         # Every explicit ROI list replaces the prior selection, including a list

@@ -159,7 +159,7 @@ struct WorkspaceView: View {
                 }
                 Spacer(minLength: 8)
                 if model.snapshot != nil {
-                    Label(model.snapshot?.normalized == true ? "OD" : tr("Intensity"), systemImage: "checkmark.circle.fill")
+                    Label((model.display == "od" || model.snapshot?.input_is_od == true) ? "OD" : tr("Intensity"), systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.medium)).foregroundStyle(Theme.accent)
                         .padding(.horizontal, 9).padding(.vertical, 5)
                         .background(Theme.accent.opacity(0.1), in: Capsule())
