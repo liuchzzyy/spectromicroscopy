@@ -23,9 +23,11 @@ def test_gui_and_cli_advance_their_own_patch_versions():
 
 def test_current_source_versions_and_installer_are_documented():
     readme = (ROOT / "README.md").read_text()
-    assert "GUI **1.0.1**" in readme
-    assert "CLI/library/engine **3.3.1**" in readme
-    assert "not yet" in readme and "GitHub Releases" in readme
+    assert "**1.0.1**" in readme
+    assert "**3.3.1**" in readme
+    assert "GitHub Releases" in readme
+    assert "Mantis-1.0.1-arm64.dmg" in readme
+    assert "Mantis-1.0.1-arm64.dmg.sha256" in readme
     migration = (ROOT / "docs/native-migration.md").read_text()
     assert "Mantis-1.0.1-arm64.dmg" in migration
     assert "Mantis-1.0.1-arm64.dmg.sha256" in migration
