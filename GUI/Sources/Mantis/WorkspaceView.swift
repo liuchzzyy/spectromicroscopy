@@ -12,17 +12,13 @@ struct WorkspaceView: View {
             Divider()
             detail.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 1080, minHeight: 720)
+        .frame(minWidth: 1320, minHeight: 740)
         .tint(Theme.accent)
     }
     var body: some View {
         workspaceLayout
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.openStack() } label: { Label(tr("Open Stack"), systemImage: "folder") }.disabled(model.busy || !model.supports("open"))
-                Picker(tr("Export format"), selection: $model.exportFormat) { ForEach(["npz", "hdf5", "csv", "png", "pdf", "svg"], id: \.self) { Text($0.uppercased()).tag($0) } }.frame(width: 90)
-                Button { model.export() } label: { Label(tr("Export"), systemImage: "square.and.arrow.up") }.disabled(!model.canExport)
-                    .help(model.showsEngineCurrentView ? "Export the current session" : "Image formats export the engine's current view; switch to that panel or use a numeric format")
                 if model.busy { Button(tr("Cancel & Reset"), role: .destructive) { model.cancel() } }
             }
         }
@@ -48,8 +44,16 @@ struct WorkspaceView: View {
                 HStack(spacing: Theme.sidebarIconSpacing) {
                     Image(systemName: model.connected ? "checkmark.circle.fill" : "circle.dotted")
                         .frame(width: Theme.sidebarIconWidth, alignment: .center)
-                    Text(tr(model.connected ? "Engine connected" : "Not connected"))
-                }.foregroundStyle(model.connected ? Color.green : Color.secondary)
+                        .foregroundStyle(model.connected ? Color.green : Color.secondary)
+                    // No "engine connected" sentence: a working engine needs no announcement,
+                    // and the status bar already reports it. Only a fault is spelled out.
+                    if let label = WorkspaceModel.sidebarStatusLabel(connected: model.connected) {
+                        Text(tr(label)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(tr(model.connected ? "Engine connected" : "Not connected"))
                 HStack(spacing: 8) {
                     Menu {
                         ForEach(InterfaceLanguage.allCases) { language in
@@ -91,26 +95,35 @@ struct WorkspaceView: View {
                     Text(tr(model.section.subtitle)).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
+                if model.section != .settings && model.section != .versions {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) { model.showInspector.toggle() }
+                    } label: {
+                        Image(systemName: model.showInspector ? "sidebar.trailing" : "sidebar.right")
+                            .frame(width: 22, height: 22)
+                    }
+                    .help(model.showInspector ? tr("Hide parameters panel") : tr("Show parameters panel"))
+                    .accessibilityLabel(model.showInspector ? tr("Hide parameters panel") : tr("Show parameters panel"))
+                    .padding(.trailing, 8)
+                    .padding(.top, 4)
+                }
                 if model.busy { ProgressView().controlSize(.small).padding(.top, 8) }
             }.padding(.horizontal, Theme.contentInset).padding(.vertical, 18)
             Divider()
             if model.section == .settings { settings }
             else if model.section == .versions { VersionManagementView(model: model) }
             else {
-                HSplitView {
+                if model.showInspector {
+                    HSplitView {
+                        ScrollView {
+                            mainWorkspaceContent
+                        }.frame(minWidth: 780)
+                        ParameterInspector(model: model).frame(minWidth: 300, idealWidth: 340, maxWidth: 400)
+                    }
+                } else {
                     ScrollView {
-                        VStack(spacing: Theme.sectionSpacing) {
-                            sourceSummary
-                            imageCard
-                            SpectraChart(spectra: model.shown?.spectra ?? [], selectedEnergy: selectedEnergy, selectEnergy: model.selectEnergy)
-                                .frame(height: 285).surface()
-                            if let inspection = model.inspection, model.section == .load {
-                                GroupBox(tr("File inspection")) { Text(inspection).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                            }
-                            resultDetails
-                        }.padding(Theme.contentInset)
-                    }.frame(minWidth: 490)
-                    ParameterInspector(model: model).frame(minWidth: 280, idealWidth: 310, maxWidth: 360)
+                        mainWorkspaceContent
+                    }.frame(minWidth: 780)
                 }
             }
             Divider()
@@ -118,12 +131,30 @@ struct WorkspaceView: View {
         }.pageBackground()
         .onChange(of: model.section) { _, _ in model.selectedImage = 0 }
     }
+    private var mainWorkspaceContent: some View {
+        VStack(spacing: Theme.sectionSpacing) {
+            sourceSummary
+            HStack(alignment: .top, spacing: Theme.sectionSpacing) {
+                imageCard.frame(maxWidth: .infinity, alignment: .topLeading)
+                SpectraChart(spectra: model.displayedSpectra, image: model.image, selectedEnergy: selectedEnergy,
+                             display: model.display, selectEnergy: model.selectEnergy,
+                             roiColors: Dictionary(uniqueKeysWithValues: model.rois.map { ($0.label, $0.colorHex) }),
+                             selectedSeries: Binding(get: { model.selectedSeriesName }, set: { model.selectSeries(named: $0) }),
+                             activeSeriesLabel: model.activeROILabel, selectionDisabled: model.busy)
+                    .frame(maxWidth: .infinity, minHeight: 350, alignment: .topLeading).surface()
+            }
+            if let inspection = model.inspection, model.section == .load {
+                GroupBox(tr("File inspection")) { Text(inspection).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+            }
+            resultDetails
+        }.padding(Theme.contentInset)
+    }
     private var selectedEnergy: Double? {
         guard let s = model.snapshot, s.energies.indices.contains(model.energyIndex) else { return nil }
         return s.energies[model.energyIndex]
     }
     private var sourceSummary: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "square.stack.3d.up.fill")
                     .font(.title3).foregroundStyle(Theme.accent)
@@ -131,8 +162,10 @@ struct WorkspaceView: View {
                     .background(Theme.accent.opacity(0.11), in: RoundedRectangle(cornerRadius: 11))
                 VStack(alignment: .leading, spacing: 3) {
                     Text(tr("SOURCE")).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-                    Text(model.snapshot.map { URL(fileURLWithPath: $0.source).lastPathComponent } ?? tr("No dataset loaded"))
-                        .font(.headline).lineLimit(1).help(model.snapshot?.source ?? "")
+                    Text(model.snapshot?.source ?? tr("No dataset loaded"))
+                        .font(.system(.callout, design: .monospaced))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
                 Spacer(minLength: 8)
                 if model.snapshot != nil {
@@ -143,53 +176,187 @@ struct WorkspaceView: View {
                 }
             }
             Divider()
-            HStack(spacing: 20) {
-                summaryValue("SHAPE", model.snapshot?.shape.map(String.init).joined(separator: " × ") ?? "—")
-                Divider().frame(height: 31)
-                summaryValue("SIGNAL", model.snapshot.map { tr($0.normalized ? "Optical density" : "Intensity") } ?? "—")
-                Divider().frame(height: 31)
-                summaryValue("Energy", model.snapshot?.energies.count.description ?? "—")
-                Spacer(minLength: 0)
+            // All measured metadata reads as ONE row so the card stays compact.
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(Array(model.sourceSummaryRows.flatMap { $0 }.enumerated()), id: \.offset) { index, cell in
+                        if index > 0 { Divider().frame(height: 31) }
+                        summaryValue(cell.label, cell.value)
+                    }
+                }
+                .padding(.bottom, 2)
             }
+            .accessibilityIdentifier("workspace.source.metadata")
         }.padding(Theme.cardInset).surface()
     }
-    private func summaryValue(_ title: String, _ value: String) -> some View { VStack(alignment: .leading, spacing: 4) { Text(tr(title)).font(.caption2.weight(.semibold)).foregroundStyle(.secondary); Text(value).font(.system(.callout, design: .monospaced)).lineLimit(1) } }
+    private func summaryValue(_ title: String, _ value: String) -> some View { VStack(alignment: .leading, spacing: 4) { Text(tr(title)).font(.caption2.weight(.semibold)).foregroundStyle(.secondary); Text(tr(value)).font(.system(.callout, design: .monospaced)).lineLimit(1).fixedSize(horizontal: true, vertical: false) } }
+    private func pointPositionString(snapshot: Snapshot, x: Int, y: Int) -> String {
+        let spatial = snapshot.spatial
+        if let unit = spatial?.unit, let axes = spatial, axes.x.indices.contains(x), axes.y.indices.contains(y) {
+            return String(format: "%@: X %d px (%.3f %@) · Y %d px (%.3f %@)",
+                          tr("Position"), x, axes.x[x], unit, y, axes.y[y], unit)
+        } else {
+            return String(format: "%@: X %d px · Y %d px", tr("Position"), x, y)
+        }
+    }
     private var imageCard: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 14) {
             HStack {
                 Label(tr("Image workspace"), systemImage: "viewfinder").font(.headline)
-                Spacer()
-                if !model.availableImages.isEmpty {
-                    Picker(tr("Image"), selection: $model.selectedImage) { ForEach(Array(model.availableImages.enumerated()), id: \.offset) { index, image in Text(image.title).tag(index) } }.labelsHidden().frame(maxWidth: 210)
+                Spacer(minLength: 4)
+                HStack(spacing: 8) {
+                    // One merged control: the display signal plus any analysis images.
+                    // Two boxes that both render "Intensity" are one box too many.
+                    Picker(tr("Signal"), selection: Binding(
+                        get: { model.selectedSignalOptionID },
+                        set: { model.selectSignal($0) }
+                    )) {
+                        ForEach(model.signalOptions) { option in Text(tr(option.title)).tag(option.id) }
+                    }
+                    .labelsHidden()
+                    .frame(width: model.showsImagePicker ? 170 : 128)
+                    .disabled(model.busy || model.preview)
+                    .help(tr("Signal"))
+                    .accessibilityLabel(tr("Signal"))
                 }
             }
             if let image = model.image {
-                ScientificCanvas(model: model, image: image).frame(height: 320)
-                HStack {
-                    Picker(tr("Selection"), selection: $model.roiMode) { ForEach(["Pixel", "Rectangle", "Lasso"], id: \.self) { Text(tr($0)).tag($0) } }.pickerStyle(.segmented).frame(maxWidth: 260)
-                    Button(tr("Clear ROI")) { model.rectangle = nil; model.polygon = nil; model.updateView() }
-                    Spacer()
-                    if let s = model.snapshot { Text("x \(s.selected_x) · y \(s.selected_y)").monospacedDigit().foregroundStyle(.secondary) }
+                if let s = model.snapshot {
+                    let ptX = model.interactionPoint?.0 ?? s.selected_x
+                    let ptY = model.interactionPoint?.1 ?? s.selected_y
+                    HStack(spacing: 6) {
+                        Image(systemName: "crosshair").font(.caption).foregroundStyle(Theme.accent)
+                        Text(pointPositionString(snapshot: s, x: ptX, y: ptY))
+                            .font(.caption.monospacedDigit().weight(.medium))
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Color(NSColor.controlBackgroundColor).opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                }
+                ScientificCanvas(model: model, image: image).frame(height: ScientificCanvas.canvasHeight).accessibilityIdentifier("scientific.image.canvas")
+                HStack(alignment: .center, spacing: 8) {
+                    Text(tr("Selection")).font(.caption.weight(.medium)).fixedSize()
+                    Picker(tr("Selection"), selection: $model.roiMode) {
+                        ForEach(["Pixel", "Rectangle", "Lasso"], id: \.self) { Text(tr($0)).tag($0) }
+                    }
+                    .labelsHidden().pickerStyle(.segmented).frame(maxWidth: 160)
+
+                    Button {
+                        model.addPendingROI()
+                    } label: {
+                        Label(tr("Add ROI"), systemImage: "plus")
+                    }
+                    .font(.caption).fixedSize()
+                    .disabled(!model.canAddROI)
+
+                    Button(tr("Clear ROI")) {
+                        model.clearROIs()
+                    }
+                    .font(.caption).fixedSize()
+                    .disabled(model.rois.isEmpty && model.rectangle == nil && model.polygon == nil && model.pendingPixel == nil)
                 }.disabled(model.busy)
+
+                if let warning = model.roiWarning {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.orange)
+                        Text(warning).font(.caption2).foregroundStyle(.orange)
+                        Spacer()
+                    }
+                }
+
+                if !model.rois.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(model.rois) { roi in
+                                let isSelected = roi.index == model.selectedROIIndex
+                                HStack(spacing: 4) {
+                                    Menu {
+                                        ForEach(ROIPresets.colors, id: \.self) { hex in
+                                            Button {
+                                                model.setROIColor(index: roi.index, hex: hex)
+                                            } label: {
+                                                Label(hex, systemImage: roi.colorHex == hex ? "checkmark.circle.fill" : "circle.fill")
+                                            }
+                                        }
+                                    } label: {
+                                        Circle().fill(Color(hex: roi.colorHex)).frame(width: 12, height: 12)
+                                    }
+                                    .menuStyle(.borderlessButton)
+                                    .fixedSize()
+                                    .help(tr("ROI color"))
+                                    .accessibilityLabel(tr("ROI color") + " \(roi.index)")
+                                    Text("[\(roi.index)] ROI \(roi.index)").font(.caption2.weight(isSelected ? .bold : .regular))
+                                    Button {
+                                        model.removeROI(index: roi.index)
+                                    } label: {
+                                        Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(isSelected ? Color(hex: roi.colorHex).opacity(0.2) : Color(NSColor.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(isSelected ? Color(hex: roi.colorHex) : Color.clear, lineWidth: 1.5))
+                                .onTapGesture {
+                                    model.selectedROIIndex = roi.index
+                                    model.updateView()
+                                }
+                            }
+                        }
+                    }
+                }
                 HStack {
                     Text(tr("Energy")).font(.caption)
                     Slider(value: Binding(get: { Double(model.energyIndex) }, set: { model.energyIndex = Int($0) }), in: 0...Double(max(1, (model.snapshot?.energies.count ?? 1)-1)), step: 1, onEditingChanged: { editing in if !editing { model.updateView() } })
                     Text(selectedEnergy.map { String(format: "%.3f eV", $0) } ?? "—").font(.system(.caption, design: .monospaced)).frame(width: 105, alignment: .trailing)
                 }.disabled(model.busy || (model.snapshot?.energies.count ?? 0) < 2)
-                HStack {
-                    Picker(tr("Signal"), selection: $model.display) { Text(tr("Intensity")).tag("intensity"); Text(tr("Optical density")).tag("od") }.frame(maxWidth: 220).onChange(of: model.display) { _, _ in model.updateView() }
-                    Spacer()
-                    Text(preferences.language == .simplifiedChinese ? "显示 \(image.width) × \(image.height)；导出保留完整数据" : "Display \(image.width) × \(image.height); export retains full data").font(.caption2).foregroundStyle(.secondary)
-                }.disabled(model.busy)
+                HStack(alignment: .top, spacing: 8) {
+                    Text("\(image.width) × \(image.height)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary).fixedSize()
+                    Text(tr("Preview sampling; export retains full data")).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, alignment: .leading)
                 if let theta = model.snapshot?.theta, !theta.isEmpty {
                     Picker(tr("Projection angle"), selection: $model.thetaIndex) { ForEach(theta.indices, id: \.self) { Text("\(theta[$0], specifier: "%.2f")°").tag($0) } }.onChange(of: model.thetaIndex) { _, _ in model.updateView() }.disabled(model.busy)
                 }
-                DisclosureGroup(tr("Display contrast — does not change scientific data")) {
-                    VStack {
-                        HStack { Text(tr("Min")).frame(width: 45); Slider(value: $model.contrastLow, in: 0...0.99); Text(tr("Max")).frame(width: 45); Slider(value: $model.contrastHigh, in: 0.01...1) }
-                        HStack { Text(tr("Gamma")).frame(width: 45); Slider(value: $model.gamma, in: 0.1...4); Picker(tr("Palette"), selection: $model.colorMap) { ForEach(["Viridis", "Grayscale", "Diverging"], id: \.self) { Text(tr($0)).tag($0) } }; Button(tr("Reset")) { model.contrastLow = 0; model.contrastHigh = 1; model.gamma = 1 } }
-                    }.font(.caption).padding(.top, 8)
-                }.font(.caption)
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker(tr("Scale"), selection: $model.spatialDisplay) {
+                            Text(tr("Pixel proportions")).tag("pixels")
+                            Text(tr("Actual spatial scale")).tag("physical")
+                        }
+                        .disabled(model.snapshot?.spatial?.unit == nil)
+                        .help(model.snapshot?.spatial?.unit == nil ? tr("Physical units not available; showing pixel coordinates") : tr("Use measured spatial coordinates for image proportions"))
+                        HStack {
+                            Text(tr("Zoom")).font(.caption.weight(.medium))
+                            Spacer(minLength: 0)
+                            Button { model.zoom(to: model.zoomLevel / 2) } label: { Image(systemName: "minus.magnifyingglass") }.disabled(model.zoomLevel == 1 || model.busy)
+                                .accessibilityLabel(tr("Zoom out"))
+                            Text("\(model.zoomLevel)×").font(.caption.monospacedDigit()).frame(width: 28)
+                            Button { model.zoom(to: model.zoomLevel * 2) } label: { Image(systemName: "plus.magnifyingglass") }.disabled(model.zoomLevel == 16 || model.busy)
+                                .accessibilityLabel(tr("Zoom in"))
+                            Button(tr("Fit")) { model.zoom(to: 1) }.disabled(model.zoomLevel == 1 || model.busy)
+                        }
+                        Text(tr("Double-click an image location to zoom into its source pixels.")).font(.caption2).foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            Text(tr("Min")).frame(width: 32, alignment: .leading)
+                            Slider(value: Binding(get: { model.contrastLow },
+                                                  set: { model.contrastLow = min($0, model.contrastHigh - 0.01) }), in: 0...0.99)
+                                .frame(maxWidth: 110)
+                            Text(tr("Max")).frame(width: 32, alignment: .leading)
+                            Slider(value: Binding(get: { model.contrastHigh },
+                                                  set: { model.contrastHigh = max($0, model.contrastLow + 0.01) }), in: 0.01...1)
+                                .frame(maxWidth: 110)
+                        }
+                        HStack(spacing: 8) {
+                            Text(tr("Gamma")).frame(width: 48, alignment: .leading)
+                            Slider(value: $model.gamma, in: 0.1...4)
+                        }
+                        HStack {
+                            Picker(tr("Palette"), selection: $model.colorMap) { ForEach(["Viridis", "Grayscale", "Diverging"], id: \.self) { Text(tr($0)).tag($0) } }
+                            Button(tr("Reset")) { model.contrastLow = 0; model.contrastHigh = 1; model.gamma = 1 }
+                        }
+                        Text(tr("Display changes never modify scientific data.")).font(.caption2).foregroundStyle(.secondary)
+                    }.padding(.top, 10)
+                } label: { Text(tr("Display Setting")).font(.system(size: 16, weight: .semibold)) }
             } else {
                 VStack(spacing: 16) {
                     VStack(spacing: 14) {
@@ -197,12 +364,14 @@ struct WorkspaceView: View {
                         Text(tr("Start with your measurements")).font(.title3.weight(.medium))
                         Text(tr("Load a spectral stack to inspect images and spectra.\nNo demonstration data is loaded automatically."))
                             .multilineTextAlignment(.center).foregroundStyle(.secondary)
-                        Button(tr("Open Stack…")) { model.openStack() }.buttonStyle(.borderedProminent).tint(Theme.accent)
-                            .disabled(!model.supports("open") || model.busy)
+                        Text(tr("Choose an input file in the Parameters panel → Open stack."))
+                            .font(.callout).foregroundStyle(Theme.accent).multilineTextAlignment(.center)
+                        Text(tr("No source is loaded. Image and charts appear here after import."))
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 28)
-                    .dropArea()
+                    .padding(.vertical, 20)
+                    .background(Theme.dropArea(effectiveScheme), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
 
                     Text(tr("HDF5 · SDF · STK · TIFF · XRM · NPZ · plugin formats")).font(.caption).foregroundStyle(.secondary)
                 }.frame(maxWidth: .infinity)
@@ -216,15 +385,21 @@ struct WorkspaceView: View {
                     VStack(alignment: .leading, spacing: 10) { ForEach(s.metrics.keys.sorted(), id: \.self) { key in VStack(alignment: .leading, spacing: 3) { Text(key).font(.caption.bold()); Text(s.metrics[key]?.string ?? s.metrics[key]?.description ?? "").font(.system(.caption, design: .monospaced)).textSelection(.enabled) }.frame(maxWidth: .infinity, alignment: .leading) } }.padding(.top, 12)
                 }.padding(16).surface()
             }
-            DisclosureGroup(preferences.language == .simplifiedChinese ? "处理历史 · \(s.history.count) 次操作" : "Processing history · \(s.history.count) operations") {
-                VStack(alignment: .leading, spacing: 10) { ForEach(Array(s.history.enumerated()), id: \.offset) { i, entry in VStack(alignment: .leading, spacing: 2) { Text("\(i+1). \(entry.method)").font(.caption.bold()); Text(JSONValue.object(entry.params).description).font(.system(.caption2, design: .monospaced)).textSelection(.enabled) } } }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12)
-            }.padding(16).surface()
+            ProcessingHistoryView(history: s.history)
         }
     }
     private var statusBar: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let error = model.error { HStack(alignment: .top) { Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange); Text(error).textSelection(.enabled); Spacer(); Button { model.error = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain) }.font(.caption).padding(.bottom, 3) }
-            HStack { Circle().fill(model.busy ? .orange : model.connected ? .green : .secondary).frame(width: 6,height: 6); Text(InterfaceText.status(model.status, language: preferences.language)).font(.caption); Spacer(); if !model.connected && !model.busy { Button(tr("Connect Engine")) { model.connect() }.controlSize(.small).disabled(model.preview) }; Text(tr("Input files are never overwritten")).font(.caption2).foregroundStyle(.secondary) }
+            HStack {
+                Circle().fill(model.busy ? .orange : model.connected ? .green : .secondary).frame(width: 6, height: 6)
+                if let status = model.visibleStatus { Text(InterfaceText.status(status, language: preferences.language)).font(.caption) }
+                Spacer()
+                if !model.connected && !model.busy {
+                    Button(tr("Connect Engine")) { model.connect() }.controlSize(.small).disabled(model.preview)
+                }
+                Text(tr("Input files are never overwritten")).font(.caption2).foregroundStyle(.secondary)
+            }
         }.padding(.horizontal, Theme.contentInset).padding(.vertical, 10).statusBarBackground()
     }
     private var settings: some View {
@@ -293,6 +468,436 @@ struct BrandMark: View {
     }
 }
 
+struct ProcessingHistoryView: View {
+    let history: [HistoryEntry]
+    @EnvironmentObject private var preferences: InterfacePreferences
+    private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
+    @State private var isExpanded = true
+    @State private var showRawJSON = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text(tr("Structured history of all operations applied to this dataset."))
+                        .font(.caption2).foregroundStyle(.secondary)
+                    Spacer()
+                    Toggle(tr("Show Raw Parameters"), isOn: $showRawJSON)
+                        .font(.caption2)
+                        .toggleStyle(.checkbox)
+                }
+                .padding(.bottom, 4)
+
+                if history.isEmpty {
+                    Text(tr("No operations recorded yet.")).font(.caption).foregroundStyle(.secondary)
+                } else {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(Array(history.enumerated()), id: \.offset) { index, entry in
+                            HStack(alignment: .top, spacing: 12) {
+                                VStack(spacing: 0) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(stepColor(for: entry.method))
+                                            .frame(width: 22, height: 22)
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                    }
+                                    if index < history.count - 1 {
+                                        Rectangle()
+                                            .fill(Color.secondary.opacity(0.25))
+                                            .frame(width: 2)
+                                            .frame(minHeight: 28)
+                                    }
+                                }
+                                .frame(width: 24)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 8) {
+                                        Label(methodTitle(for: entry.method), systemImage: methodIcon(for: entry.method))
+                                            .font(.caption.weight(.semibold))
+                                        Text(entry.method)
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .padding(.horizontal, 4).padding(.vertical, 1)
+                                            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 3))
+                                        Spacer()
+                                    }
+
+                                    if showRawJSON {
+                                        Text(JSONValue.object(entry.params).description)
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .padding(6)
+                                            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
+                                            .textSelection(.enabled)
+                                    } else {
+                                        formattedParams(entry.params)
+                                    }
+                                }
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(NSColor.controlBackgroundColor).opacity(0.6), in: RoundedRectangle(cornerRadius: 8))
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.12), lineWidth: 1))
+                            }
+                            .padding(.bottom, index < history.count - 1 ? 8 : 0)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 12)
+        } label: {
+            HStack(spacing: 8) {
+                Label(tr("Processing History"), systemImage: "clock.arrow.circlepath")
+                    .font(.headline)
+                Spacer()
+                Text("\(history.count) " + tr("operations"))
+                    .font(.caption.monospacedDigit())
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Theme.accent.opacity(0.15), in: Capsule())
+                    .foregroundStyle(Theme.accent)
+            }
+        }
+        .padding(16)
+        .surface()
+    }
+
+    private func methodTitle(for method: String) -> String {
+        switch method {
+        case "open": return tr("Open Stack")
+        case "view": return tr("Update View / ROI")
+        case "crop": return tr("Crop Stack")
+        case "normalize": return tr("Normalize")
+        case "pca": return tr("Calculate PCA")
+        case "cluster": return tr("Calculate clusters")
+        case "export": return tr("Export")
+        case "dark": return tr("Subtract dark signal")
+        case "align": return tr("Align images")
+        case "despike": return tr("Despike")
+        case "reset": return tr("Restore original stack")
+        default: return method.capitalized
+        }
+    }
+
+    private func methodIcon(for method: String) -> String {
+        switch method {
+        case "open": return "tray.and.arrow.down"
+        case "view": return "eye"
+        case "crop": return "crop"
+        case "normalize": return "slider.horizontal.below.square.and.square.filled"
+        case "pca": return "chart.bar.xaxis"
+        case "cluster": return "circle.hexagongrid"
+        case "export": return "square.and.arrow.up"
+        case "dark": return "moon.fill"
+        case "align": return "arrow.up.and.down.and.arrow.left.and.right"
+        default: return "gearshape"
+        }
+    }
+
+    private func stepColor(for method: String) -> Color {
+        switch method {
+        case "open": return .blue
+        case "view": return .teal
+        case "crop", "normalize", "dark", "align": return .orange
+        case "pca", "cluster": return .purple
+        case "export": return .green
+        default: return .secondary
+        }
+    }
+
+    @ViewBuilder
+    private func formattedParams(_ params: [String: JSONValue]) -> some View {
+        if params.isEmpty {
+            Text(tr("No custom parameters")).font(.caption2).foregroundStyle(.secondary)
+        } else {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 140, maximum: 280))], alignment: .leading, spacing: 6) {
+                ForEach(params.keys.sorted(), id: \.self) { key in
+                    if let val = params[key] {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(formatParamKey(key) + ":").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            Text(formatParamVal(val)).font(.caption2.monospaced())
+                                .lineLimit(key == "sha256" ? 1 : 2)
+                                .truncationMode(.middle)
+                                .help(val.description)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
+                    }
+                }
+            }
+        }
+    }
+
+    private func formatParamKey(_ key: String) -> String {
+        switch key {
+        case "path": return tr("Path")
+        case "pre_normalized": return tr("Optical Density")
+        case "energy_index": return tr("Energy Frame")
+        case "x": return "X"
+        case "y": return "Y"
+        case "roi": return "ROI"
+        case "rois": return tr("ROIs")
+        case "viewport": return tr("Viewport")
+        case "format": return tr("Format")
+        case "dpi": return "DPI"
+        default: return key
+        }
+    }
+
+    private func formatParamVal(_ val: JSONValue) -> String {
+        switch val {
+        case .string(let s):
+            return s.contains("/") ? URL(fileURLWithPath: s).lastPathComponent : s
+        case .bool(let b):
+            return b ? tr("Yes") : tr("No")
+        case .number(let n):
+            return n.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(n))" : String(format: "%.3g", n)
+        case .array(let a):
+            return "[\(a.count) items]"
+        case .object:
+            return "{...}"
+        case .null:
+            return "null"
+        }
+    }
+}
+
+struct LoadDataInspector: View {
+    @ObservedObject var model: WorkspaceModel
+    @EnvironmentObject private var preferences: InterfacePreferences
+    private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // 1. 导入设置 (Import Options)
+            VStack(alignment: .leading, spacing: 12) {
+                Label(tr("Import Options"), systemImage: "square.and.arrow.down").font(.headline)
+
+                // 文件模式 (单选)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(tr("File Mode")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    Picker(tr("File Mode"), selection: $model.importFileMode) {
+                        Text(tr("Single Stack")).tag("single")
+                        Text(tr("Merge Multiple Files")).tag("merge")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                }
+
+                Divider()
+
+                if model.importFileMode == "single" {
+                    // 单一文件导入
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("File Info")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        HStack {
+                            Text(tr("Format")).font(.caption).frame(width: 48, alignment: .leading)
+                            Picker(tr("Format"), selection: $model.importFileFormat) {
+                                Text(tr("Auto / All Supported")).tag("all")
+                                Text("SDF (*.hdr)").tag("hdr")
+                                Text("HDF5 (*.h5, *.hdf5)").tag("hdf5")
+                                Text("NPZ (*.npz)").tag("npz")
+                            }
+                            .labelsHidden()
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tr("File Path")).font(.caption2).foregroundStyle(.secondary)
+                            HStack {
+                                TextField(tr("Select .hdr, .h5, or .npz file"), text: $model.importFilePath)
+                                    .textFieldStyle(.roundedBorder)
+                                Button {
+                                    if let chosen = model.chooseFiles()?.first {
+                                        model.importFilePath = chosen
+                                    }
+                                } label: {
+                                    Image(systemName: "folder")
+                                }
+                                .help(tr("Choose stack file…"))
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("Parameters")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Toggle(tr("Input is already optical density (OD)"), isOn: $model.openAsOpticalDensity)
+                            .font(.caption)
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tr("Region / Channel (Optional)")).font(.caption2).foregroundStyle(.secondary)
+                            TextField(tr("e.g. [[0, 0]] or blank"), text: $model.importSelection)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        HStack(spacing: 8) {
+                            Button(tr("Inspect File")) {
+                                model.inspectFile()
+                            }
+                            .disabled(model.importFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+
+                            Spacer()
+
+                            Button(tr("Open Stack")) {
+                                model.importSingleStack()
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.importFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                        }
+                        .padding(.top, 4)
+                    }
+                } else {
+                    // 合并多个文件导入
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("File Info")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        HStack {
+                            Text("\(model.mergeFilePaths.count) " + tr("files selected"))
+                                .font(.caption.monospacedDigit())
+                            Spacer()
+                            Button(tr("Choose Files…")) {
+                                if let chosen = model.chooseFiles(multiple: true) {
+                                    model.mergeFilePaths = chosen
+                                }
+                            }
+                        }
+                        if !model.mergeFilePaths.isEmpty {
+                            ScrollView(.vertical) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(model.mergeFilePaths.prefix(5), id: \.self) { path in
+                                        Text(URL(fileURLWithPath: path).lastPathComponent)
+                                            .font(.caption2.monospaced())
+                                            .lineLimit(1)
+                                    }
+                                    if model.mergeFilePaths.count > 5 {
+                                        Text("... and \(model.mergeFilePaths.count - 5) more")
+                                            .font(.caption2).foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .frame(maxHeight: 70)
+                            .padding(6)
+                            .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("Parameters")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tr("Photon energies in eV (comma or space separated)")).font(.caption2).foregroundStyle(.secondary)
+                            TextField(tr("e.g. 280.0, 280.5, 281.0"), text: $model.mergeEnergiesText)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        Button(tr("Build Stack")) {
+                            model.importMergedStack()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.mergeFilePaths.count < 2 || model.mergeEnergiesText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding(14)
+            .surface()
+
+            // 2. 导出设置 (Export Options)
+            VStack(alignment: .leading, spacing: 14) {
+                Label(tr("Export Options"), systemImage: "square.and.arrow.up").font(.headline)
+
+                // Compact data and format pickers share one row with the action.
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(tr("Processed Data Export")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        // Format first, then the data selection, then a plain text action.
+                        Picker(tr("Format"), selection: $model.dataExportFormat) {
+                            ForEach(["npz", "hdf5", "csv"], id: \.self) { Text($0.uppercased()).tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 66)
+                        if model.dataExportFormat != "csv" {
+                            Picker(tr("Data"), selection: Binding(
+                                get: { model.selectedExportTarget },
+                                set: { target in
+                                    model.selectedExportTarget = target
+                                    if let opt = model.exportDataOptions.first(where: { $0.id == target }) {
+                                        model.selectedDataGroups = opt.groups
+                                    }
+                                }
+                            )) {
+                                ForEach(model.exportDataOptions) { opt in
+                                    Text(opt.displayName).tag(opt.id)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 112)
+                        }
+                        Spacer(minLength: 0)
+                        Button(tr(WorkspaceModel.dataExportActionTitle)) {
+                            model.exportProcessedData()
+                        }
+                        .fixedSize()
+                        .disabled(!model.canExportProcessedData || model.busy || model.preview || !model.supports("export"))
+                    }
+                    if model.dataExportFormat == "csv" {
+                        Text(tr("CSV exports current spectra only; data choices apply to NPZ/HDF5."))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    else if model.selectedExportTarget.hasPrefix("ROI") && model.selectedExportTarget.hasSuffix("ImageMapping") {
+                        Text(tr("Analysis results are session-wide; ROI mapping is a suggested filename, not an ROI-only dataset."))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                // 图像导出
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(tr("Image Export")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    HStack {
+                        Picker(tr("Format"), selection: $model.imageExportFormat) {
+                            ForEach(["png", "pdf", "svg"], id: \.self) { Text($0.uppercased()).tag($0) }
+                        }
+                        .labelsHidden()
+
+                        Picker(tr("DPI"), selection: $model.imageExportDPI) {
+                            ForEach([150, 300, 600], id: \.self) { Text("\($0) DPI").tag($0) }
+                        }
+                        .labelsHidden()
+                        .frame(width: 95)
+
+                        Spacer()
+                        Button(tr("Export Image…")) {
+                            model.exportImage()
+                        }
+                        .disabled(!model.canExportImage)
+                    }
+                }
+
+                Divider()
+
+                // 操作日志导出：与图片导出相同，选择格式后直接保存。
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(tr("Export Work Log")).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    HStack {
+                        Picker(tr("Log Format"), selection: $model.logExportFormat) {
+                            Text("JSON").tag("json")
+                            Text("Markdown (.md)").tag("md")
+                        }
+                        .labelsHidden()
+                        Spacer()
+                        Button(tr("Export Log…")) { model.exportWorkflowLog() }
+                            .disabled(!model.canExportWorkflowLog || model.preview)
+                    }
+                }
+            }
+            .padding(14)
+            .surface()
+        }
+    }
+}
+
 struct ParameterInspector: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var preferences: InterfacePreferences
@@ -302,13 +907,17 @@ struct ParameterInspector: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack { Text(tr("PARAMETERS")).font(.caption.weight(.semibold)).tracking(1); Spacer(); Image(systemName: "slider.horizontal.3") }.foregroundStyle(.secondary)
-                ForEach(CommandCatalog.forms(for: model.section)) { form in
-                    DisclosureGroup(isExpanded: Binding(get: { expanded == form.id }, set: { expanded = $0 ? form.id : nil })) {
-                        CommandEditor(model: model, form: form).padding(.top, 10)
-                    } label: { Text(tr(form.title)).font(.callout.weight(.medium)) }
-                    Divider()
+                if model.section == .load {
+                    LoadDataInspector(model: model)
+                } else {
+                    ForEach(CommandCatalog.forms(for: model.section)) { form in
+                        DisclosureGroup(isExpanded: Binding(get: { expanded == form.id }, set: { expanded = $0 ? form.id : nil })) {
+                            CommandEditor(model: model, form: form).padding(.top, 10)
+                        } label: { Text(tr(form.title)).font(.callout.weight(.medium)) }
+                        Divider()
+                    }
+                    Text(tr("Pixel and energy indices start at 0. Crop/ROI upper bounds are exclusive. Unsupported engine methods stay disabled.")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
-                Text(tr("Pixel and energy indices start at 0. Crop/ROI upper bounds are exclusive. Unsupported engine methods stay disabled.")).font(.caption).foregroundStyle(.secondary)
             }.padding(18)
         }.inspectorBackground()
         .onChange(of: model.section, initial: true) { _, section in expanded = CommandCatalog.forms(for: section).first?.id }
@@ -350,7 +959,24 @@ struct CommandEditor: View {
                     .font(.caption).foregroundStyle(Theme.accent)
             }
             Text(tr(form.help)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            ForEach(form.fields) { field in
+            if form.method == "open" {
+                Button { if let path = model.chooseFiles()?.first { values["path"] = path } } label: {
+                    Label(tr("Choose stack file…"), systemImage: "folder")
+                }
+                .help(tr("Select a file, not a folder; SDF uses the .hdr file."))
+                .accessibilityIdentifier("load.stack.choose")
+            }
+            if form.method == "open", let path = values["path"], !path.isEmpty {
+                Text(URL(fileURLWithPath: path).lastPathComponent)
+                    .font(.caption.monospaced()).lineLimit(2).help(path)
+            }
+            if form.method == "open" {
+                TextField(tr("Stack file"), text: Binding(
+                    get: { values["path"] ?? "" }, set: { values["path"] = $0 }
+                )).textFieldStyle(.roundedBorder)
+                    .help(tr("Enter a full path or choose a stack file above."))
+            }
+            ForEach(form.fields.filter { !(form.method == "open" && ($0.key == "path" || $0.key == "pre_normalized")) }) { field in
                 VStack(alignment: .leading, spacing: 5) {
                     switch field.kind {
                     case .toggle:
@@ -374,11 +1000,24 @@ struct CommandEditor: View {
                 Button(tr("Use all energies")) { values["energy_range"] = "0, \(s.energies.count)" }.font(.caption)
             }
             Button(tr(form.title)) {
-                do { model.run(form.method, try CommandCatalog.parameters(for: form, values: values)) }
-                catch { model.error = error.localizedDescription }
+                do {
+                    let params = try Self.parameters(for: form, values: values, openAsOpticalDensity: model.openAsOpticalDensity)
+                    if form.method == "open", case let .string(path)? = params["path"] {
+                        let selected = try WorkspaceModel.stackFile(from: URL(fileURLWithPath: path))
+                        model.openStack(at: selected, selection: params["selection"])
+                    } else {
+                        model.run(form.method, params)
+                    }
+                } catch { model.error = error.localizedDescription }
             }.buttonStyle(.borderedProminent).tint(Theme.accent).disabled(!model.enabled(form))
+                .accessibilityIdentifier("command.\(form.method).\(form.id)")
             if !model.supports(form.method) { Text(preferences.language == .simplifiedChinese ? "需要引擎能力：\(form.method)" : "Requires engine capability: \(form.method)").font(.caption2).foregroundStyle(.secondary) }
         }.font(.callout).disabled(model.busy || model.preview)
+    }
+    static func parameters(for form: CommandForm, values: [String: String], openAsOpticalDensity: Bool) throws -> [String: JSONValue] {
+        var params = try CommandCatalog.parameters(for: form, values: values)
+        if form.method == "open" { params["pre_normalized"] = .bool(openAsOpticalDensity) }
+        return params
     }
     private func isMultiple(_ field: ParameterField) -> Bool { if case .files = field.kind { true } else { false } }
 }

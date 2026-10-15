@@ -45,6 +45,7 @@ strip -x "$APP/Contents/MacOS/MantisNative" "$APP/Contents/Helpers/MantisUpdater
 cp GUI/Info.plist "$APP/Contents/Info.plist"
 cp GUI/Resources/Mantis_logo.icns "$APP/Contents/Resources/Mantis_logo.icns"
 cp GUI/Resources/Mantis_logo_about.png "$APP/Contents/Resources/Mantis_logo_about.png"
+cp GUI/Resources/MantisMenuIcon.png "$APP/Contents/Resources/MantisMenuIcon.png"
 cp LICENSE "$APP/Contents/Resources/LICENSE"
 LOGIN_ITEM="$APP/Contents/Library/LoginItems/MantisLoginHelper.app"
 mkdir -p "$LOGIN_ITEM/Contents/MacOS"

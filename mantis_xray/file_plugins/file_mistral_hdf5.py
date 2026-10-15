@@ -168,8 +168,8 @@ def read(filename, stack_object, selection=None, *args, **kwargs):
         stack_object.n_rows = stack_object.absdata.shape[1]
 
         # Create spatial coordinate arrays (in micrometers)
-        stack_object.x_dist = numpy.linspace(0, stack_object.n_cols * x_pixel_size, num=stack_object.n_cols)
-        stack_object.y_dist = numpy.linspace(0, stack_object.n_rows * y_pixel_size, num=stack_object.n_rows)
+        stack_object.x_dist = numpy.arange(stack_object.n_cols, dtype=float) * x_pixel_size
+        stack_object.y_dist = numpy.arange(stack_object.n_rows, dtype=float) * y_pixel_size
 
         # Read exposure times (dwell times)
         if "ExpTimes" in grp:

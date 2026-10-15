@@ -38,18 +38,28 @@ def finite_array(value, name):
     return array
 
 
-def image_record(title, array_xy):
+def image_record(title, array_xy, viewport=None, full_shape=None):
     array = finite_array(array_xy, title)
     if array.ndim != 2 or 0 in array.shape:
         raise SessionError("An image must be a nonempty [x,y] matrix")
     width, height = array.shape
+    origin_x, origin_y = (viewport[:2] if viewport is not None else (0, 0))
+    full_width, full_height = full_shape if full_shape is not None else (width, height)
+    full_width, full_height = int(full_width), int(full_height)
     # Nearest sampled preview only. No alteration of the numerical data.
     xs = np.linspace(0, width - 1, min(width, 256), dtype=int)
     ys = np.linspace(0, height - 1, min(height, 256), dtype=int)
     preview = array[np.ix_(xs, ys)].T
+    # Statistics use every source pixel in the visible frame, not the sampled
+    # 256×256 display preview. They do not modify or smooth scientific data.
+    counts, edges = np.histogram(array, bins=32)
     return {"title": str(title), "width": len(xs), "height": len(ys),
-            "full_width": width, "full_height": height,
-            "values": preview.ravel().tolist()}
+            "full_width": full_width, "full_height": full_height,
+            "origin_x": origin_x, "origin_y": origin_y,
+            "visible_width": width, "visible_height": height,
+            "values": preview.ravel().tolist(), "minimum": float(array.min()),
+            "maximum": float(array.max()), "mean": float(array.mean()),
+            "histogram_counts": counts.tolist(), "histogram_edges": edges.tolist()}
 
 
 def spectrum_record(name, x, y):
@@ -98,6 +108,9 @@ class Session:
         self.energy_index = self.selected_x = self.selected_y = 0
         self.display = "intensity"
         self.roi_mask = None
+        self.rois = []
+        self.viewport = None
+        self.spatial_unit = None
         self._original = None
         self._raw_original = None
         self._last_snapshot = None
@@ -279,7 +292,10 @@ class Session:
         self._protected_paths.update(files)
         self.history, self.results = [], {}
         self.normalized, self.display = False, "intensity"
+        self.viewport, self.spatial_unit = None, None
         self.energy_index = self.selected_x = self.selected_y = 0
+        self.roi_mask = None
+        self.rois = []
         self._original = copy.deepcopy(stack)
         self._raw_original = copy.deepcopy(stack)
         self._invalidate()
@@ -291,6 +307,7 @@ class Session:
         if not path.is_file():
             raise SessionError(f"File not found: {path}", "file_error")
         raw_original = None
+        spatial_unit = None
         embedded_od = None
         embedded_i0 = embedded_i0_energies = None
         if path.suffix.lower() == ".npz":
@@ -299,6 +316,11 @@ class Session:
                     raise SessionError("NPZ requires data and energies arrays")
                 stack = self._make_stack(archive["data"], archive["energies"], archive.get("theta"),
                                          archive.get("x"), archive.get("y"))
+                if "spatial_unit" in archive:
+                    raw_unit = archive["spatial_unit"]
+                    if raw_unit.shape != ():
+                        raise SessionError("spatial_unit must be a scalar string")
+                    spatial_unit = str(raw_unit.item()) or None
                 embedded_od = archive.get("od")
                 embedded_i0 = archive.get("i0")
                 embedded_i0_energies = archive.get("i0_energies", stack.ev)
@@ -314,6 +336,9 @@ class Session:
                     read = lambda key: archive[key][()] if key in archive else None
                     stack = self._make_stack(read("exchange/data"), read("exchange/energy"),
                                              read("exchange/theta"), read("exchange/x"), read("exchange/y"))
+                    if "provenance/spatial_unit" in archive:
+                        raw_unit = archive["provenance/spatial_unit"][()]
+                        spatial_unit = (raw_unit.decode("utf-8") if isinstance(raw_unit, bytes) else str(raw_unit)) or None
                     embedded_od = read("normalization/od")
                     embedded_i0 = read("normalization/i0")
                     embedded_i0_energies = read("normalization/energy")
@@ -357,7 +382,35 @@ class Session:
             stack.fill_h5_struct_normalization()
         if pre_normalized:
             stack.UsePreNormalizedData()
+        # Only recognized source metadata supplies a physical unit. Coordinate arrays
+        # alone (e.g. NPZ fallback indices) do not establish micrometers.
+        if path.suffix.lower() == ".hdr":
+            from ..file_plugins.file_sdf import HDR_FileParser
+            header = HDR_FileParser(str(path)).hdr
+            regions = header["ScanDefinition"]["Regions"]
+            if len(regions) > 1:
+                xunit = regions[1]["PAxis"].get("Unit")
+                yunit = regions[1]["QAxis"].get("Unit")
+                if xunit == yunit and xunit in ("um", "µm"):
+                    spatial_unit = "µm"
+        elif path.suffix.lower() in (".h5", ".hdf5", ".hdf"):
+            import h5py
+            with h5py.File(path, "r") as source_file:
+                if ("SpecNormalized/x_pixel_size" in source_file and
+                        "SpecNormalized/y_pixel_size" in source_file):
+                    spatial_unit = "µm"  # MISTRAL pixel-size fields are in micrometers.
+                elif "exchange/x" in source_file and "exchange/y" in source_file:
+                    xunit = source_file["exchange/x"].attrs.get("units")
+                    yunit = source_file["exchange/y"].attrs.get("units")
+                    if isinstance(xunit, bytes):
+                        xunit = xunit.decode("utf-8", errors="replace")
+                    if isinstance(yunit, bytes):
+                        yunit = yunit.decode("utf-8", errors="replace")
+                    if xunit == yunit and isinstance(xunit, str) and xunit.strip() and "\ufffd" not in xunit:
+                        spatial_unit = xunit.strip()
         self.stack = stack
+        self.spatial_unit = spatial_unit
+        self.viewport = None
         self.source = str(path)
         self._source_paths = [path]
         self._protected_paths.add(path)
@@ -366,6 +419,7 @@ class Session:
         self.normalized = pre_normalized or embedded_od is not None or embedded_i0 is not None
         self.energy_index = self.selected_x = self.selected_y = 0
         self.roi_mask = None
+        self.rois = []
         self.display = "intensity"
         self._original = copy.deepcopy(stack)
         self._raw_original = raw_original if raw_original is not None else copy.deepcopy(stack)
@@ -377,6 +431,7 @@ class Session:
         self.analysis = analyze.analyze(self.stack)
         self.results = {}
         self.roi_mask = None
+        self.rois = []
         self._last_snapshot = None
 
     def _bounds(self, bounds):
@@ -458,8 +513,14 @@ class Session:
         self.record("normalize", params)
         return self.snapshot()
 
-    def view(self, energy_index=None, x=None, y=None, display=None, roi=None, polygon=None):
+    def view(self, energy_index=None, x=None, y=None, display=None, roi=None, polygon=None, viewport=None, rois=None):
         self.require_data()
+        if viewport is not None:
+            if (not isinstance(viewport, (list, tuple)) or len(viewport) != 4 or
+                    any(type(value) is not int for value in viewport) or
+                    not (0 <= viewport[0] < viewport[2] <= self.stack.n_cols and
+                         0 <= viewport[1] < viewport[3] <= self.stack.n_rows)):
+                raise SessionError("viewport must be nonempty integer [x0,y0,x1,y1] inside the image")
         energy = self.energy_index if energy_index is None else self._integer(energy_index, "energy_index", 0, self.stack.n_ev-1)
         sx = self.selected_x if x is None else self._integer(x, "x", 0, self.stack.n_cols-1)
         sy = self.selected_y if y is None else self._integer(y, "y", 0, self.stack.n_rows-1)
@@ -470,22 +531,51 @@ class Session:
             self.require_normalized()
         if roi is not None and polygon is not None:
             raise SessionError("Choose either rectangle ROI or polygon")
-        mask = self.roi_mask
+        # Every explicit ROI list replaces the prior selection, including a list
+        # that retains saved ROIs but no longer selects one for the histogram.
+        mask = None if rois is not None else self.roi_mask
         if roi is not None:
             x0, y0, x1, y1 = self._bounds(roi)
             mask = np.zeros((self.stack.n_cols, self.stack.n_rows), dtype=bool)
             mask[x0:x1, y0:y1] = True
-        if polygon is not None:
+        def polygon_mask(vertices):
             from matplotlib.path import Path as Polygon
-            vertices = finite_array(polygon, "polygon")
+            vertices = finite_array(vertices, "polygon")
             if vertices.ndim != 2 or vertices.shape[1] != 2 or len(vertices) < 3:
                 raise SessionError("polygon requires at least three [x,y] vertices")
             xx, yy = np.meshgrid(np.arange(self.stack.n_cols)+0.5, np.arange(self.stack.n_rows)+0.5, indexing="ij")
-            mask = Polygon(vertices).contains_points(np.column_stack((xx.ravel(), yy.ravel()))).reshape(xx.shape)
-            if not mask.any():
+            selection = Polygon(vertices).contains_points(np.column_stack((xx.ravel(), yy.ravel()))).reshape(xx.shape)
+            if not selection.any():
                 raise SessionError("polygon ROI is empty")
+            return selection
+        if polygon is not None:
+            mask = polygon_mask(polygon)
+        if rois is not None:
+            if not isinstance(rois, (list, tuple)) or len(rois) > 10:
+                raise SessionError("rois must be a list of at most 10 ROI definitions")
+            parsed_rois = []
+            for item in rois:
+                if isinstance(item, dict):
+                    has_bounds, has_polygon = "bounds" in item, "polygon" in item
+                    if has_bounds == has_polygon:
+                        raise SessionError("Each ROI requires exactly one of bounds or polygon")
+                    if has_bounds:
+                        b = self._bounds(item["bounds"])
+                        parsed_rois.append({"bounds": b,
+                                            "label": str(item.get("label", f"ROI {len(parsed_rois)+1}"))})
+                    else:
+                        vertices = finite_array(item["polygon"], "polygon").tolist()
+                        polygon_mask(vertices)
+                        parsed_rois.append({"polygon": vertices,
+                                            "label": str(item.get("label", f"ROI {len(parsed_rois)+1}"))})
+                elif isinstance(item, (list, tuple)) and len(item) == 4:
+                    b = self._bounds(item)
+                    parsed_rois.append({"bounds": b, "label": f"ROI {len(parsed_rois)+1}"})
+                else:
+                    raise SessionError("Each ROI in rois must have bounds [x0,y0,x1,y1] or polygon vertices")
+            self.rois = parsed_rois
         self.energy_index, self.selected_x, self.selected_y = energy, sx, sy
-        self.display, self.roi_mask = display, mask
+        self.display, self.roi_mask, self.viewport = display, mask, list(viewport) if viewport is not None else None
         return self.snapshot()
 
     def _values(self):
@@ -496,6 +586,7 @@ class Session:
                                  self.stack.theta if self.stack.stack4D is not None else None,
                                  self.stack.x_dist if x is None else x, self.stack.y_dist if y is None else y)
         self.stack = stack
+        self.viewport = None
         self.normalized = False
         self.display = "intensity"
         self.energy_index = min(self.energy_index, stack.n_ev-1)
@@ -669,7 +760,7 @@ class Session:
                              spectra=[spectrum_record(f"Cluster {i+1}", self.stack.ev, trial.clusterspectra[i])
                                       for i in range(count)], metrics={"clusters": count})
 
-    def export(self, path, format, overwrite=False):
+    def export(self, path, format, overwrite=False, dpi=None, include=None, spectrum_name=None):
         self.require_data()
         import os
         import tempfile
@@ -677,19 +768,44 @@ class Session:
         if any(target == source or (target.exists() and source.is_file() and os.path.samefile(target, source))
                for source in self._protected_paths):
             raise SessionError("Cannot overwrite an input file")
-        if format not in ("hdf5", "npz", "csv", "png", "pdf", "svg"):
+        format_lower = str(format).lower()
+        if format_lower not in ("hdf5", "npz", "csv", "png", "pdf", "svg", "json", "md", "markdown"):
             raise SessionError(f"Unsupported export format: {format}", "unsupported_format")
         suffixes = {"hdf5": {".h5", ".hdf5", ".hdf"}, "npz": {".npz"},
-                    "csv": {".csv"}, "png": {".png"}, "pdf": {".pdf"}, "svg": {".svg"}}
-        if target.suffix.lower() not in suffixes[format]:
+                    "csv": {".csv"}, "png": {".png"}, "pdf": {".pdf"}, "svg": {".svg"},
+                    "json": {".json"}, "md": {".md"}, "markdown": {".md", ".markdown"}}
+        if target.suffix.lower() not in suffixes[format_lower]:
             raise SessionError(f"Export format {format} does not match destination suffix {target.suffix or '(none)'}")
         if type(overwrite) is not bool:
             raise SessionError("overwrite must be boolean")
         if target.exists() and not overwrite:
             raise SessionError(f"Destination exists: {target}; set overwrite=true explicitly", "file_exists")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        history = self.history + [{"method": "export", "params": {"path": str(target), "format": format, "overwrite": overwrite}}]
+        allowed_groups = {"processed", "raw", "normalization", "analysis", "spectra"}
+        if include is not None:
+            if (not isinstance(include, list) or not include or
+                    any(not isinstance(group, str) or group not in allowed_groups for group in include) or
+                    len(include) != len(set(include))):
+                raise SessionError("include must be a nonempty list of unique data groups: processed, raw, normalization, analysis, spectra")
+            if format_lower not in ("npz", "hdf5"):
+                raise SessionError("include is supported only for NPZ and HDF5 data exports")
+            if "normalization" in include and not self.normalized:
+                raise SessionError("include normalization requires a normalized stack")
+        if spectrum_name is not None and (not isinstance(spectrum_name, str) or not spectrum_name or
+                                          format_lower not in ("npz", "hdf5") or
+                                          include is None or "spectra" not in include):
+            raise SessionError("spectrum_name requires NPZ/HDF5 export with spectra selected")
         view = self._last_snapshot or self.snapshot()
+        if spectrum_name is not None and sum(s["name"] == spectrum_name for s in view["spectra"]) != 1:
+            raise SessionError("spectrum_name must match exactly one current spectrum")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        export_params = {"path": str(target), "format": format_lower, "overwrite": overwrite}
+        if include is not None:
+            export_params["include"] = include
+        if spectrum_name is not None:
+            export_params["spectrum_name"] = spectrum_name
+        if dpi is not None:
+            export_params["dpi"] = int(dpi)
+        history = self.history + [{"method": "export", "params": export_params}]
         original = self._raw_original
         raw = original.absdata if original.stack4D is None else original.stack4D
         arrays = {"data": self._values(), "energies": self.stack.ev, "x": self.stack.x_dist, "y": self.stack.y_dist,
@@ -703,6 +819,8 @@ class Session:
             arrays["od"] = self.stack.od3d if self.stack.stack4D is None else self.stack.od4d
             arrays["i0"] = np.asarray(self.stack.i0data)
             arrays["i0_energies"] = np.asarray(self.stack.evi0)
+        if self.spatial_unit is not None:
+            arrays["spatial_unit"] = np.asarray(self.spatial_unit)
         def flatten(prefix, value):
             if isinstance(value, dict):
                 for name, child in value.items():
@@ -712,22 +830,69 @@ class Session:
         for key, value in flatten("results", self.results):
             if value is not None:
                 arrays[key] = np.asarray(value)
+        if include is not None:
+            prefixes = {
+                "processed": ("data", "energies", "x", "y", "theta", "spatial_unit"),
+                "raw": ("raw_data", "raw_energies", "raw_x", "raw_y", "raw_theta"),
+                "normalization": ("od", "i0", "i0_energies"),
+            }
+            selected = set(include)
+            arrays = {key: value for key, value in arrays.items()
+                      if any(key in prefixes[group] for group in selected if group in prefixes)
+                      or ("analysis" in selected and key.startswith("results/"))}
+            if "spectra" in selected:
+                chosen_spectra = (s for s in view["spectra"] if spectrum_name is None or s["name"] == spectrum_name)
+                for index, spectrum in enumerate(chosen_spectra):
+                    arrays[f"spectra/x/{index}"] = np.asarray(spectrum["x"])
+                    arrays[f"spectra/y/{index}"] = np.asarray(spectrum["y"])
+                    arrays[f"spectra/name/{index}"] = np.asarray(spectrum["name"])
         # Serialize into a private temporary file, then atomically publish. Failed
         # export never truncates a preexisting file. No input file is modified.
         handle, temporary = tempfile.mkstemp(prefix=".mantis-export-", dir=target.parent)
         os.close(handle)
         try:
-            if format == "npz":
+            if format_lower == "json":
+                log_content = {
+                    "source": self.source,
+                    "shape": [int(d) for d in self.stack.absdata.shape],
+                    "energies": self.stack.ev.tolist(),
+                    "normalized": self.normalized,
+                    "history": history,
+                    "metrics": {str(k): str(v) for k, v in (view.get("metrics") or {}).items()}
+                }
+                with open(temporary, "w", encoding="utf-8") as stream:
+                    json.dump(log_content, stream, indent=2, ensure_ascii=False)
+            elif format_lower in ("md", "markdown"):
+                lines = [
+                    "# MANTiS 工作日志\n",
+                    "## 数据源信息",
+                    f"- **数据源路径**: `{self.source}`",
+                    f"- **数据维度**: `{' × '.join(str(d) for d in self.stack.absdata.shape)}`",
+                    f"- **信号状态**: `{'已归一化 (光密度)' if self.normalized else '未归一化 (强度)'}`",
+                    f"- **能量范围**: `{self.stack.ev[0]:.3f} eV – {self.stack.ev[-1]:.3f} eV ({len(self.stack.ev)} 点)`\n",
+                    "## 执行命令与参数历史"
+                ]
+                for i, entry in enumerate(history, 1):
+                    lines.append(f"{i}. **{entry.get('method', '')}**")
+                    params_str = json.dumps(entry.get("params", {}), ensure_ascii=False)
+                    lines.append(f"   - 参数: `{params_str}`")
+                if view.get("metrics"):
+                    lines.append("\n## 分析指标与计算结果")
+                    for k, v in sorted(view["metrics"].items()):
+                        lines.append(f"- **{k}**: `{v}`")
+                with open(temporary, "w", encoding="utf-8") as stream:
+                    stream.write("\n".join(lines) + "\n")
+            elif format_lower == "npz":
                 with open(temporary, "wb") as stream:
                     np.savez_compressed(stream, **arrays, source=self.source,
                                         history=json.dumps(history, allow_nan=False), schema_version=1)
-            elif format == "hdf5":
+            elif format_lower == "hdf5":
                 import h5py
                 mapping = {"data": "exchange/data", "energies": "exchange/energy", "x": "exchange/x", "y": "exchange/y",
                            "theta": "exchange/theta", "raw_data": "raw/data", "raw_energies": "raw/energy",
                            "raw_x": "raw/x", "raw_y": "raw/y", "raw_theta": "raw/theta",
                            "od": "normalization/od", "i0": "normalization/i0",
-                           "i0_energies": "normalization/energy"}
+                           "i0_energies": "normalization/energy", "spatial_unit": "provenance/spatial_unit"}
                 with h5py.File(temporary, "w") as archive:
                     archive.attrs["mantis_session_version"] = 1
                     archive.create_dataset("implements", data="information:exchange:spectromicroscopy")
@@ -736,10 +901,11 @@ class Session:
                         if value.dtype.kind == "U":
                             value = value.astype(h5py.string_dtype("utf-8"))
                         archive.create_dataset(mapping.get(key, key), data=value)
-                    archive["exchange/data"].attrs["axes"] = "x:y:energy:theta" if self.stack.stack4D is not None else "x:y:energy"
+                    if "exchange/data" in archive:
+                        archive["exchange/data"].attrs["axes"] = "x:y:energy:theta" if self.stack.stack4D is not None else "x:y:energy"
                     archive.create_dataset("provenance/source", data=self.source)
                     archive.create_dataset("provenance/history", data=json.dumps(history, allow_nan=False))
-            elif format == "csv":
+            elif format_lower == "csv":
                 import csv
                 with open(temporary, "w", newline="") as stream:
                     writer = csv.writer(stream)
@@ -764,7 +930,8 @@ class Session:
                     for spectrum in view["spectra"]:
                         axis.plot(spectrum["x"], spectrum["y"], label=spectrum["name"])
                     axis.legend()
-                figure.savefig(temporary, format=format, dpi=150)
+                fig_dpi = int(dpi) if dpi is not None else 150
+                figure.savefig(temporary, format=format_lower, dpi=fig_dpi)
                 figure.clear()
             if overwrite:
                 os.replace(temporary, target)
@@ -784,19 +951,51 @@ class Session:
         self.require_data()
         values = self.stack.od3d if self.display == "od" else self.stack.absdata
         if images is None:
+            image_values = values[:, :, self.energy_index]
+            if self.viewport is not None:
+                x0, y0, x1, y1 = self.viewport
+                image_values = image_values[x0:x1, y0:y1]
             images = [image_record("Optical density" if self.display == "od" else "Intensity",
-                                   values[:, :, self.energy_index])]
+                                   image_values, self.viewport, (self.stack.n_cols, self.stack.n_rows))]
+        if self.roi_mask is not None and images is not None and images and images[0].get("title") in ("Intensity", "Optical density") and "histogram_counts" in images[0]:
+            selected_pixels = values[:, :, self.energy_index][self.roi_mask]
+            counts, edges = np.histogram(selected_pixels, bins=32)
+            images[0]["roi_histogram_counts"] = counts.tolist()
+            images[0]["roi_histogram_edges"] = edges.tolist()
+            images[0]["roi_minimum"] = float(selected_pixels.min())
+            images[0]["roi_maximum"] = float(selected_pixels.max())
+            images[0]["roi_mean"] = float(selected_pixels.mean())
         if spectra is None:
             spectra = [spectrum_record("Pixel", self.stack.ev, values[self.selected_x, self.selected_y])]
-            if self.roi_mask is not None:
+            if getattr(self, "rois", None):
+                for idx, r in enumerate(self.rois):
+                    lbl = r.get("label") or f"ROI {idx+1}"
+                    if "bounds" in r:
+                        rx0, ry0, rx1, ry1 = r["bounds"]
+                        roi_spec = values[rx0:rx1, ry0:ry1, :].mean(axis=(0, 1))
+                    else:
+                        from matplotlib.path import Path as Polygon
+                        vertices = np.asarray(r["polygon"], dtype=float)
+                        xx, yy = np.meshgrid(np.arange(self.stack.n_cols)+0.5,
+                                             np.arange(self.stack.n_rows)+0.5, indexing="ij")
+                        selection = Polygon(vertices).contains_points(
+                            np.column_stack((xx.ravel(), yy.ravel()))).reshape(xx.shape)
+                        roi_spec = values[selection].mean(axis=0)
+                    spectra.append(spectrum_record(lbl, self.stack.ev, roi_spec))
+            elif self.roi_mask is not None:
                 spectra.append(spectrum_record("ROI mean", self.stack.ev, values[self.roi_mask].mean(axis=0)))
-        result = {"source": self.source, "shape": list(self.stack.absdata.shape),
+            else:
+                spectra.append(spectrum_record("Full image", self.stack.ev, values.mean(axis=(0, 1))))
+        result = {"source": self.source, "shape": [int(dimension) for dimension in self.stack.absdata.shape],
                   "energies": self.stack.ev.tolist(), "normalized": self.normalized,
                   "pca_ready": bool(self.analysis.pca_calculated),
                   "clusters_ready": bool(self.analysis.clusters_calculated),
                   "energy_index": self.energy_index, "selected_x": self.selected_x,
                   "selected_y": self.selected_y, "images": images, "spectra": spectra,
                   "metrics": {str(k): str(v) for k, v in (metrics or {}).items()},
+                  "spatial": {"x": np.asarray(self.stack.x_dist, dtype=float).tolist(),
+                              "y": np.asarray(self.stack.y_dist, dtype=float).tolist(),
+                              "unit": self.spatial_unit},
                   "history": copy.deepcopy(self.history)}
         json.dumps(result, allow_nan=False)
         self._last_snapshot = copy.deepcopy(result)

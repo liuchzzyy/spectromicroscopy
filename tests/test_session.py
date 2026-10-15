@@ -43,6 +43,77 @@ def test_open_non_square_orientation_and_private_state(tmp_path):
     json.dumps(result, allow_nan=False)
 
 
+def test_spatial_axes_and_zoom_preview_are_source_accurate(tmp_path):
+    Session = session_class()
+    x, y, energy = np.indices((12, 8, 3))
+    values = 10 * x + y + energy / 10
+    coords_x = 1391.7 + np.arange(12) * 0.05
+    coords_y = 1541.2 + np.arange(8) * 0.1
+    source, _, _ = fixture_file(tmp_path, data=values, x=coords_x, y=coords_y)
+    session = Session()
+    full = session.dispatch("open", {"path": str(source)})
+    assert full["spatial"]["x"] == coords_x.tolist()
+    assert full["spatial"]["y"] == coords_y.tolist()
+    assert full["spatial"]["unit"] is None  # NPZ has no trustworthy unit metadata
+    zoomed = session.dispatch("view", {"energy_index": 2, "x": 4, "y": 3,
+                                        "viewport": [2, 1, 7, 6]})
+    image = zoomed["images"][0]
+    assert (image["origin_x"], image["origin_y"], image["visible_width"], image["visible_height"]) == (2, 1, 5, 5)
+    assert (image["full_width"], image["full_height"]) == (12, 8)
+    assert image["values"] == values[2:7, 1:6, 2].T.ravel().tolist()
+    assert sum(image["histogram_counts"]) == 25
+    np.testing.assert_allclose(image["mean"], values[2:7, 1:6, 2].mean())
+    assert len(image["histogram_edges"]) == len(image["histogram_counts"]) + 1
+    assert zoomed["spectra"][0]["y"] == values[4, 3].tolist()
+    assert session.dispatch("view", {"energy_index": 2})["images"][0]["values"] == values[:, :, 2].T.ravel().tolist()
+    for invalid in ([0, 0, 13, 5], [0, 0, 0, 5], [1.5, 0, 4, 5], [1, 0, 4]):
+        with pytest.raises(ValueError, match="viewport"):
+            session.dispatch("view", {"viewport": invalid})
+
+
+def test_image_histogram_uses_all_source_pixels_not_preview_sampling():
+    from mantis_xray.core.session import image_record
+    full = np.zeros((514, 303), dtype=float)
+    full[1::2, :] = 7.0
+    image = image_record("Intensity", full)
+    assert image["width"] == 256 and image["height"] == 256
+    assert sum(image["histogram_counts"]) == full.size
+    np.testing.assert_allclose(image["mean"], full.mean())
+    assert image["minimum"] == 0.0 and image["maximum"] == 7.0
+    constant = image_record("Constant", np.full((3, 5), 2.5))
+    assert sum(constant["histogram_counts"]) == 15
+    assert np.all(np.diff(constant["histogram_edges"]) > 0)
+
+
+def test_spatial_axis_unit_is_only_reported_for_known_plugin_metadata(tmp_path):
+    Session = session_class()
+    source, _, _ = fixture_file(tmp_path)
+    session = Session()
+    assert session.dispatch("open", {"path": str(source)})["spatial"]["unit"] is None
+
+
+def test_spatial_unit_roundtrips_through_numeric_exports(tmp_path):
+    import h5py
+    Session = session_class()
+    data = np.arange(4 * 3 * 2, dtype=float).reshape(4, 3, 2) + 1
+    source = tmp_path / "with-units.hdf5"
+    with h5py.File(source, "w") as archive:
+        exchange = archive.create_group("exchange")
+        exchange.create_dataset("data", data=data)
+        exchange.create_dataset("energy", data=[625., 626.])
+        exchange.create_dataset("x", data=[0., 0.05, 0.1, 0.15]).attrs["units"] = "µm"
+        exchange.create_dataset("y", data=[0., 0.1, 0.2]).attrs["units"] = "µm"
+    session = Session()
+    result = session.dispatch("open", {"path": str(source)})
+    assert result["spatial"]["unit"] == "µm"
+    for fmt in ("npz", "hdf5"):
+        target = tmp_path / f"roundtrip.{fmt}"
+        session.dispatch("export", {"path": str(target), "format": fmt})
+        restored = Session().dispatch("open", {"path": str(target)})
+        assert restored["spatial"] == result["spatial"]
+        assert restored["images"][0]["values"] == result["images"][0]["values"]
+
+
 def test_normalize_roi_validates_and_preserves_data(tmp_path):
     Session = session_class()
     path, data, energies = fixture_file(tmp_path)
@@ -130,6 +201,38 @@ def test_pca_default_component_count_is_json_safe(tmp_path):
     assert 1 <= result["metrics"].get("components", 1) if "components" in result["metrics"] else True
 
 
+def test_roi_shapes_and_clear_restore_default_views(tmp_path):
+    Session = session_class()
+    data = np.arange(4 * 4 * 3, dtype=float).reshape(4, 4, 3) + 1
+    path, _, _ = fixture_file(tmp_path, data=data)
+    session = Session()
+    session.dispatch("open", {"path": str(path)})
+    rois = [{"bounds": [1, 1, 2, 2], "label": "[1] ROI 1"},
+            {"polygon": [[0, 0], [2, 0], [2, 2], [0, 2]], "label": "[2] ROI 2"}]
+    selected = session.dispatch("view", {"rois": rois, "roi": [1, 1, 2, 2]})
+    assert [s["name"] for s in selected["spectra"]] == ["Pixel", "[1] ROI 1", "[2] ROI 2"]
+    np.testing.assert_allclose(selected["spectra"][1]["y"], data[1, 1, :])
+    assert selected["images"][0]["roi_histogram_counts"] is not None
+    assert sum(selected["images"][0]["roi_histogram_counts"]) == 1
+    cleared = session.dispatch("view", {"rois": [], "roi": None, "polygon": None})
+    assert not any("ROI" in s["name"] for s in cleared["spectra"])
+    assert "Full image" in [s["name"] for s in cleared["spectra"]]
+    np.testing.assert_allclose(next(s["y"] for s in cleared["spectra"] if s["name"] == "Full image"), data.mean(axis=(0, 1)))
+    assert cleared["images"][0].get("roi_histogram_counts") is None
+    assert session.rois == [] and session.roi_mask is None
+    # Deselecting the active mask while retaining saved ROIs must not reuse
+    # the previous ROI's histogram or spectra selection.
+    session.dispatch("view", {"rois": rois, "roi": [1, 1, 2, 2]})
+    deselected = session.dispatch("view", {"rois": rois, "roi": None, "polygon": None})
+    assert deselected["images"][0].get("roi_histogram_counts") is None
+    assert session.roi_mask is None
+    for invalid in ([{"bounds": [0, 0, 1, 1], "polygon": [[0, 0], [1, 0], [1, 1]]}],
+                    [{"polygon": [[0, 0], [1, 0], [2, 0]]}],
+                    [{"polygon": [[0, 0], [1, 0], [float("nan"), 1]]}]):
+        with pytest.raises(ValueError):
+            session.dispatch("view", {"rois": invalid})
+
+
 def test_view_roi_and_processing_invalidation_reset(tmp_path):
     Session = session_class()
     path, data, _ = fixture_file(tmp_path)
@@ -141,6 +244,18 @@ def test_view_roi_and_processing_invalidation_reset(tmp_path):
     assert result["images"][0]["values"] == data[:, :, 3].T.ravel().tolist()
     result = session.dispatch("view", {"polygon": [[0,0],[2,0],[2,2],[0,2]]})
     assert "ROI" in result["spectra"][1]["name"]
+    # Multi-ROI test (up to 10 ROIs)
+    multi_res = session.dispatch("view", {
+        "rois": [
+            {"bounds": [0, 0, 2, 2], "label": "[1] ROI 1"},
+            {"bounds": [1, 1, 3, 2], "label": "[2] ROI 2"}
+        ]
+    })
+    assert len(multi_res["spectra"]) == 3
+    assert multi_res["spectra"][1]["name"] == "[1] ROI 1"
+    assert multi_res["spectra"][2]["name"] == "[2] ROI 2"
+    np.testing.assert_allclose(multi_res["spectra"][1]["y"], data[:2, :2].mean(axis=(0, 1)))
+    np.testing.assert_allclose(multi_res["spectra"][2]["y"], data[1:3, 1:2].mean(axis=(0, 1)))
     with pytest.raises(ValueError, match="empty"):
         session.dispatch("view", {"roi": [0, 0, 0, 1]})
     session.dispatch("pca", {"components": 2})
@@ -212,6 +327,102 @@ def test_exports_full_resolution_hdf5_npz_roundtrip_and_graphics(tmp_path):
         assert "results/pca/eigenvals" in f
     with pytest.raises(ValueError, match="input"):
         session.dispatch("export", {"path": str(path), "format": "npz", "overwrite": True})
+
+
+def test_export_selected_data_groups_and_rejects_empty_selection(tmp_path):
+    session = session_class()()
+    source, data, _ = fixture_file(tmp_path, data=np.ones((3, 3, 4)))
+    session.dispatch("open", {"path": str(source)})
+    target = tmp_path / "selected.npz"
+    session.dispatch("export", {"path": str(target), "format": "npz", "include": ["raw", "spectra"]})
+    with np.load(target) as output:
+        assert "raw_data" in output and "raw_energies" in output
+        assert "data" not in output and "results/pca/eigenvals" not in output
+        assert "spectra/y/0" in output and "spectra/x/0" in output
+        np.testing.assert_array_equal(output["raw_data"], data)
+    with pytest.raises(ValueError, match="include"):
+        session.dispatch("export", {"path": str(tmp_path / "empty.npz"), "format": "npz", "include": []})
+    with pytest.raises(ValueError, match="include"):
+        session.dispatch("export", {"path": str(tmp_path / "unknown.npz"), "format": "npz", "include": ["fabricated"]})
+    with pytest.raises(ValueError, match="include"):
+        session.dispatch("export", {"path": str(tmp_path / "duplicate.npz"), "format": "npz", "include": ["raw", "raw"]})
+    with pytest.raises(ValueError, match="normalization"):
+        session.dispatch("export", {"path": str(tmp_path / "od.npz"), "format": "npz", "include": ["normalization"]})
+    with pytest.raises(ValueError, match="include"):
+        session.dispatch("export", {"path": str(tmp_path / "wrong.csv"), "format": "csv", "include": ["raw"]})
+    assert not (tmp_path / "empty.npz").exists()
+    assert not (tmp_path / "unknown.npz").exists()
+
+
+def test_export_one_roi_spectrum_does_not_mislabel_all_spectra(tmp_path):
+    session = session_class()()
+    data = np.arange(3 * 3 * 4, dtype=float).reshape(3, 3, 4) + 1
+    source, _, _ = fixture_file(tmp_path, data=data)
+    session.dispatch("open", {"path": str(source)})
+    session.dispatch("view", {"rois": [
+        {"bounds": [0, 0, 1, 1], "label": "[1] ROI 1"},
+        {"bounds": [2, 2, 3, 3], "label": "[2] ROI 2"},
+    ]})
+    output = tmp_path / "ROI1.npz"
+    session.dispatch("export", {"path": str(output), "format": "npz",
+                                "include": ["spectra"], "spectrum_name": "[1] ROI 1"})
+    with np.load(output) as archive:
+        assert archive["spectra/name/0"].item() == "[1] ROI 1"
+        np.testing.assert_array_equal(archive["spectra/y/0"], data[0, 0, :])
+        assert "spectra/name/1" not in archive
+    missing = tmp_path / "missing.npz"
+    with pytest.raises(ValueError, match="spectrum_name"):
+        session.dispatch("export", {"path": str(missing), "format": "npz",
+                                    "include": ["spectra"], "spectrum_name": "ROI 404"})
+    assert not missing.exists()
+
+
+def test_export_selected_hdf5_without_processed_dataset(tmp_path):
+    import h5py
+    session = session_class()()
+    source, data, _ = fixture_file(tmp_path, data=np.ones((3, 3, 4)))
+    session.dispatch("open", {"path": str(source)})
+    target = tmp_path / "raw_only.hdf5"
+    session.dispatch("export", {"path": str(target), "format": "hdf5", "include": ["raw"]})
+    with h5py.File(target) as f:
+        assert "raw/data" in f
+        assert "exchange/data" not in f
+        np.testing.assert_array_equal(f["raw/data"], data)
+    reloaded = session_class()()
+    with pytest.raises(ValueError, match="Unsupported file format"):
+        reloaded.dispatch("open", {"path": str(target)})
+
+
+def test_export_custom_dpi_and_workflow_logs_json_markdown(tmp_path):
+    Session = session_class()
+    data = np.ones((10, 8, 4))
+    source, _, _ = fixture_file(tmp_path, data=data)
+    session = Session()
+    session.dispatch("open", {"path": str(source)})
+    session.dispatch("view", {"energy_index": 1, "x": 2, "y": 3})
+
+    # Custom DPI image export
+    img_target = tmp_path / "figure.png"
+    res = session.dispatch("export", {"path": str(img_target), "format": "png", "dpi": 300})
+    assert img_target.is_file() and img_target.stat().st_size > 0
+
+    # Workflow log JSON export
+    json_target = tmp_path / "workflow.json"
+    res_json = session.dispatch("export", {"path": str(json_target), "format": "json"})
+    assert json_target.is_file()
+    log_data = json.loads(json_target.read_text())
+    assert log_data["source"] == str(source)
+    assert len(log_data["history"]) >= 2
+    assert log_data["history"][0]["method"] == "open"
+    assert log_data["history"][1]["method"] == "export"
+
+    # Workflow log Markdown (.md) export
+    md_target = tmp_path / "workflow.md"
+    res_md = session.dispatch("export", {"path": str(md_target), "format": "md"})
+    assert md_target.is_file()
+    md_text = md_target.read_text()
+    assert "# MANTiS" in md_text
+    assert "open" in md_text and "export" in md_text
 
 
 def test_reference_input_cannot_be_replaced_by_direct_session_export(tmp_path):

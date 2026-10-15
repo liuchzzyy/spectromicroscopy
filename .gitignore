@@ -32,6 +32,11 @@ __pycache__/
 *.ncb
 *.sm
 *.npz
+# Local beamline source files are never part of the public code history.
+/docs/Sol_240309145/
+
+# Editor/agent atomic-write intermediates
+.hermes-tmp.*
 
 # macOS
 .DS_Store

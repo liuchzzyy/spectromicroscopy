@@ -51,6 +51,9 @@ def test_session_opens_plain_normalized_variant_with_correct_axes(tmp_path):
 
     assert result["shape"] == [4, 5, 6]                     # (x, y, energy)
     np.testing.assert_array_equal(session.stack.ev, energies)
+    assert result["spatial"]["unit"] == "µm"
+    np.testing.assert_allclose(np.diff(result["spatial"]["x"]), 0.013)
+    np.testing.assert_allclose(np.diff(result["spatial"]["y"]), 0.013)
     display = result["images"][0]
     width, height = display["width"], display["height"]
     assert (width, height) == (4, 5)                        # columns x, rows y

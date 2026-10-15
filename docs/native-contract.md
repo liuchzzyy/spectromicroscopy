@@ -8,7 +8,7 @@ Native SwiftUI/AppKit app communicates with its **private bundled engine** over 
 Launch `python -m mantis_xray.service` in development, or bundled `engine/mantis-engine` in the app. Each line request is `{"id":1,"protocol":1,"method":"open","params":{"path":"/absolute/file"}}`.
 Response: `{"id":1,"protocol":1,"ok":true,"result":{...}}` or `{"id":1,"protocol":1,"ok":false,"error":{"code":"invalid_request","message":"..."}}`. All diagnostic output goes to stderr. `hello` works without a dataset and returns `{"engine_version":"3.3.0","protocol":1,"capabilities":[method names]}`. Unknown protocol/method is a structured error. Sequential requests, session state is private to one process. GUI executes I/O off main thread, disables mutations during requests, cancellation terminates/reaps engine and explicitly resets the session.
 
-All analysis commands return a snapshot (below), with optional additional numeric results. Methods `hello` and `inspect_file` can return distinct records. `export` returns a snapshot plus `exported_path`. Image matrices are small display representations only, **not data export**; analysis and exported files retain full resolution. Images should bound each dimension to 256 and record full_width/full_height. Axes refer to input array [x,y,energy]; display images have rows y and columns x.
+All analysis commands return a snapshot (below), with optional additional numeric results. Methods `hello` and `inspect_file` can return distinct records. `export` returns a snapshot plus `exported_path`. Image matrices are small display representations only, **not data export**; analysis and numeric exports retain full resolution. Images bound each preview dimension to 256 and record full_width/full_height. The optional `origin_x`, `origin_y`, `visible_width`, `visible_height` describe a source-pixel viewport; `minimum`, `maximum`, `mean`, and 32-bin `histogram_counts`/`histogram_edges` describe **all source pixels in that visible image**, not just the sampled preview. Optional `spatial` holds full-length x/y coordinate arrays and a unit only when recognized source metadata provides one; unlabeled coordinates are not presumed to be µm. Axes refer to input array [x,y,energy]; display images have rows y and columns x.
 
 ## Snapshot
 
@@ -17,7 +17,11 @@ All analysis commands return a snapshot (below), with optional additional numeri
  "source":"...", "shape":[width,height,energy_count], "energies":[...],
  "normalized":false, "pca_ready":false, "clusters_ready":false,
  "energy_index":0,"selected_x":0,"selected_y":0,
- "images":[{"title":"Intensity","width":2,"height":2,"values":[1,2,3,4],"full_width":2,"full_height":2}],
+ "images":[{"title":"Intensity","width":2,"height":2,"values":[1,2,3,4],"full_width":2,"full_height":2,
+            "origin_x":0,"origin_y":0,"visible_width":2,"visible_height":2,
+            "minimum":1,"maximum":4,"mean":2.5,"histogram_counts":[1,1,1,1],
+            "histogram_edges":[1,1.75,2.5,3.25,4]}],
+ "spatial":{"x":[0,0.05],"y":[0,0.05],"unit":"µm"},
  "spectra":[{"name":"Pixel","x":[280,281],"y":[4,5]}],
  "metrics":{"key":"string value"}, "history":[{"method":"...","params":{}}]
 }
@@ -29,7 +33,7 @@ All JSON numbers must be finite; invalid scientific inputs fail explicitly, neve
 - `open`: path; optional selection [[region,channel]], optional `pre_normalized` bool (explicit opt in). Support existing file plugins plus NPZ (`data` [x,y,e] or [x,y,e,theta], `energies`, optional `theta`, `i0`). Retain original data, no auto duplicate averaging. Handle duplicate energies explicitly, never silently repair.
 - `inspect_file`: path; return available plugin/selection metadata.
 - `build_stack`: paths (single-frame files), energies list.
-- `view`: energy_index, x, y, optional display `intensity`/`od`; optional rectangle ROI [x0,y0,x1,y1] (exclusive upper bounds), or polygon list of [x,y]. Empty ROI rejected. Returns view with ROI mean spectrum. No mutation of underlying data.
+- `view`: energy_index, x, y, optional display `intensity`/`od`; optional rectangle ROI [x0,y0,x1,y1] (exclusive upper bounds), polygon list of [x,y], or **display-only** `viewport` [x0,y0,x1,y1] (exclusive upper bounds). Optional `rois` is an explicit list of up to 10 ROI definitions, each with either `bounds` or `polygon` plus `label`; `rois: []` clears saved ROIs and the selected mask. The viewport resamples the selected source-data region to at most 256×256; spectra, ROI analysis, stored arrays, processing history and numeric export remain full resolution. Empty or out-of-bounds intervals are rejected. Returns ROI spectra and an active ROI histogram when selected, otherwise the full-image spectrum and histogram; no mutation of underlying data.
 - `normalize`: mode `file` with path (two-column CSV/XAS), `roi` with bounds, `histogram` with min/max, or `pre_normalized`. Validate positive transmission/I0; no silent repairs.
 - `crop`: bounds [x0,y0,x1,y1], energy_range [first,last_exclusive]. Invalidate downstream analyses.
 - `dark`: value; explicit subtract, validate.
@@ -39,7 +43,7 @@ All JSON numbers must be finite; invalid scientific inputs fail explicitly, neve
 - `reset`: restore originally opened data and invalidate analyses.
 - `pca`: components optional; use existing analyze.calculate_pca (do not replace PCA convention).
 - `cluster`: clusters, components, remove_first bool, sigma_split bool, seed=0; existing analyze.calculate_clusters. Return cluster map and each cluster spectrum plus distance image and eigenvalue spectrum where useful.
-- `export`: path; format `hdf5`/`npz`/`csv`/`png`/`pdf`/`svg`. HDF5/NPZ include source, history, raw/processed data and numerical analyses. Never overwrite input. CSV exports displayed spectra, graphics exports current views with Agg. Existing destination requires overwrite=true.
+- `export`: path; format `hdf5`/`npz`/`csv`/`png`/`pdf`/`svg`/`json`/`md`, optional `dpi` for graphics. HDF5/NPZ preserve source/history; by default include raw/processed data and numerical analyses. Optional `include` (NPZ/HDF5 only) is a nonempty unique list selected from `processed`, `raw`, `normalization` (only when normalized), `analysis`, `spectra`; numerical datasets are written only for selected groups, with spectra as `spectra/{x,y,name}/<index>`. Optional `spectrum_name` requires `spectra` in `include` and exactly one matching displayed spectrum; it exports only that spectrum to NPZ/HDF5. A selective raw-only HDF5/NPZ is an analysis artifact, not a re-importable processed stack. Never overwrite input. CSV exports displayed spectra, graphics exports current views with Agg. JSON/MD export the work log. Existing destination requires overwrite=true.
 
 ## Advanced methods and parameters
 
