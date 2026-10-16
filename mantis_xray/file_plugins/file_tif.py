@@ -93,22 +93,6 @@ def read(filename, self, selection=None, *args, **kwargs):
     self.data_struct.exchange.x_units = 'pixel'
     self.data_struct.exchange.y_units = 'pixel'
 
-def preview(filename):
-    """Preview detector pixels without requiring or inventing energy calibration."""
-    import tifffile
-    with tifffile.TiffFile(filename) as tif:
-        image = tif.pages[0].asarray()
-        shape = list(tif.series[0].shape)
-        axes = tif.series[0].axes
-        count = len(tif.pages)
-    if image.ndim != 2:
-        raise ValueError('TIFF first page is not a scalar detector image')
-    return {'kind': 'image', 'width': int(image.shape[1]),
-            'height': int(image.shape[0]), 'values': image.ravel().tolist(),
-            'shape': shape, 'frame_count': count,
-            'metadata': {'source_axes': axes, 'spatial_unit': 'pixel',
-                         'calibration': 'raw detector preview; no energy axis inferred'}}
-
 
 def read_tif_info(filename):
     img = Image.open(filename)

@@ -48,57 +48,6 @@ def identify(filename):
 
 
 
-def preview(filename):
-    """Read only the first raw Xradia image, including rotation acquisitions.
-
-    Pixels are row-major (y, x), not normalized, aligned or reconstructed.
-    Rotation angles remain angles; sparse/invalid Energy streams are metadata,
-    never used to pretend a tomography acquisition is an energy stack.
-    """
-    from mantis_xray.file_plugins.file_nexus_scan import _result, _safe
-
-    ole = OleFileIO(os.fspath(filename))
-    try:
-        def values(name, dtype='<f4'):
-            path = 'ImageInfo/' + name
-            if not ole.exists(path):
-                return np.array([], dtype=dtype)
-            return np.frombuffer(ole.openstream(path).read(), dtype=dtype)
-
-        count_name = 'NoOfImages' if ole.exists('ImageInfo/NoOfImages') else 'ImagesTaken'
-        count = int(values(count_name, '<u4')[0])
-        nx = int(values('ImageWidth', '<u4')[0])
-        ny = int(values('ImageHeight', '<u4')[0])
-        if min(count, nx, ny) <= 0:
-            raise ValueError('Invalid Xradia image dimensions/count')
-        datatype = int(values('DataType', '<u4')[0])
-        dtype = {5: '<u2', 10: '<f4'}.get(datatype)
-        if dtype is None:
-            raise ValueError('Unsupported Xradia pixel data type: %s' % datatype)
-        image = np.frombuffer(ole.openstream('ImageData1/Image1').read(), dtype=dtype).reshape(ny, nx)
-        angles = values('Angles')[:count]
-        rotation = angles.size == count and count > 1 and np.ptp(angles) > 1e-4
-        pixel = values('PixelSize')
-        calibrated = bool(pixel.size and np.isfinite(pixel[0]) and pixel[0] > 0)
-        step = float(pixel[0]) if calibrated else 1.
-        axes = {key: dict(name=key, units='um' if calibrated else 'pixel',
-                          values=_safe(np.arange(size) * step), calibrated=calibrated,
-                          description='Relative image coordinate; origin is first pixel')
-                for key, size in [('x', nx), ('y', ny)]}
-        axes['frame'] = dict(name='rotation_angle' if rotation else 'frame_index',
-                             units='degree' if rotation else 'index',
-                             values=_safe(angles) if rotation else list(range(count)))
-        return _result(image, axes, dict(
-            scientific_kind='tomography_projection' if rotation else 'xray_image',
-            shape=[count, ny, nx], frame_count=count, frame_index=0,
-            dataset_path='ImageData1/Image1', pixel_size_um=step if calibrated else None,
-            angles_degree=_safe(angles), energy_stream_eV=_safe(values('Energy')),
-            exposure_time_s=_safe(values('ExpTimes')[:count]),
-            interpretation='Raw first projection/image; no flat-field correction, alignment or reconstruction.'))
-    finally:
-        ole.close()
-
-
 def GetFileStructure(FileName):
     return None
 

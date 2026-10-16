@@ -55,33 +55,6 @@ def GetFileStructure(FileName):
     return D
 
 
-def preview(filename):
-    """Return a raw first-frame preview of the SDF scan."""
-    from pathlib import Path
-    import numpy as np
-    parser = HDR_FileParser(filename)
-    definition = parser.hdr['ScanDefinition']
-    region = definition['Regions'][1]
-    paxis = region['PAxis']['Points'][1:]
-    qaxis = region['QAxis']['Points'][1:]
-    files = sorted(Path(filename).parent.glob(Path(filename).stem + '_a*.xim'))
-    if not files:
-        raise ValueError('No XIM image files found for HDR scan')
-    first_img = np.loadtxt(files[0])  # (rows, cols)
-    return {
-        'kind': 'image',
-        'width': int(first_img.shape[1]),
-        'height': int(first_img.shape[0]),
-        'values': np.asarray(first_img, dtype=float).ravel().tolist(),
-        'shape': [len(paxis), len(qaxis), len(files)],
-        'frame_count': len(files),
-        'metadata': {
-            'format': 'SDF',
-            'first_xim': files[0].name
-        }
-    }
-
-
 
 #-----------------------------------------------------------------------
 class HDR_FileParser:

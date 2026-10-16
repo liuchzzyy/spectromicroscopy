@@ -123,9 +123,6 @@ struct WorkspaceView: View {
     }
     private var mainWorkspaceContent: some View {
         VStack(spacing: Theme.sectionSpacing) {
-            if let preview = model.filePreview {
-                FilePreviewView(preview: preview)
-            } else {
             sourceSummary
             HStack(alignment: .top, spacing: Theme.sectionSpacing) {
                 imageCard.frame(maxWidth: .infinity, alignment: .topLeading)
@@ -140,7 +137,6 @@ struct WorkspaceView: View {
                 FileInspectionCardView(model: model, rawJson: inspection)
             }
             resultDetails
-            }
         }.padding(Theme.contentInset)
     }
     private var selectedEnergy: Double? {
@@ -988,9 +984,6 @@ struct LoadDataInspector: View {
                         .accessibilityIdentifier("load.selectionParameters")
 
                         HStack(spacing: 8) {
-                            Button(tr("Preview File")) { model.previewFile() }
-                                .disabled(model.importFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy || !model.supports("preview_file"))
-                                .accessibilityIdentifier("load.previewFile")
                             Button(tr("Inspect File")) {
                                 model.inspectFile()
                             }

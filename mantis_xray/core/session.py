@@ -19,7 +19,7 @@ with redirect_stdout(sys.stderr):
 
 
 BASE_METHODS = ("open", "normalize", "pca", "cluster", "view", "crop", "dark",
-                "remove_image", "reset", "despike", "align", "export", "inspect_file", "preview_file", "build_stack")
+                "remove_image", "reset", "despike", "align", "export", "inspect_file", "build_stack")
 
 
 class SessionError(ValueError):
@@ -223,47 +223,6 @@ class Session:
             raise SessionError(f"File not found: {path}", "file_error")
         return path
 
-    def preview_file(self, path):
-        """Read-only plugin preview; never replaces the active analysis stack."""
-        from .. import file_plugins
-        path = self._file_path(path)
-        plugin = file_plugins.identify(str(path))
-        if plugin is None:
-            raise SessionError('Unsupported file format', 'unsupported_format')
-        info = self.inspect_file(path)
-        preview = getattr(plugin, 'preview', None)
-        if preview is None:
-            try:
-                stack = self._load_plugin(path, None)
-                arr = stack.absdata if stack.stack4D is None else stack.stack4D
-                if arr.ndim == 2:
-                    first_frame = arr.T
-                elif arr.ndim >= 3:
-                    first_frame = arr[:, :, 0].T
-                else:
-                    raise ValueError('Cannot extract 2D image from stack')
-                result = {
-                    'kind': 'image',
-                    'width': int(first_frame.shape[1]),
-                    'height': int(first_frame.shape[0]),
-                    'values': first_frame.ravel().tolist(),
-                    'shape': [int(stack.n_cols), int(stack.n_rows), int(stack.n_ev)],
-                    'frame_count': int(stack.n_ev),
-                    'metadata': {'fallback': True}
-                }
-            except Exception as exc:
-                raise SessionError('This plugin has no raw preview: ' + str(exc), 'unsupported_format')
-        else:
-            result = preview(str(path))
-        result.update({key: info.get(key) for key in ('path', 'format', 'beamline', 'plugin')})
-        result['beamline'] = result['beamline'] or 'Default'
-        if 'shape' not in result and 'shape' in result.get('metadata', {}):
-            result['shape'] = result['metadata']['shape']
-        if 'frame_count' not in result and 'frame_count' in result.get('metadata', {}):
-            result['frame_count'] = result['metadata']['frame_count']
-        self.protect_inputs((path,))
-        return result
-
     def inspect_file(self, path):
         path = self._file_path(path)
         file_size = path.stat().st_size
@@ -326,12 +285,6 @@ class Session:
             format_name = "CSV"
         elif suf == ".json":
             format_name = "JSON"
-        elif suf == ".dat":
-            format_name = "DAT"
-        elif suf == ".xdi":
-            format_name = "XDI"
-        elif suf == ".txt":
-            format_name = "TXT"
         else:
             format_name = suf.lstrip(".").upper() or "Default"
 
@@ -596,13 +549,22 @@ class Session:
                         yunit = yunit.decode("utf-8", errors="replace")
                     if xunit == yunit and isinstance(xunit, str) and xunit.strip() and "\ufffd" not in xunit:
                         spatial_unit = xunit.strip()
+        if spatial_unit is None and hasattr(stack, "data_struct") and hasattr(stack.data_struct, "exchange"):
+            x_u = getattr(stack.data_struct.exchange, "x_units", None)
+            y_u = getattr(stack.data_struct.exchange, "y_units", None)
+            if isinstance(x_u, str) and isinstance(y_u, str) and x_u != "unknown" and x_u == y_u:
+                norm_u = x_u.replace("μm", "µm").replace("um", "µm")
+                if norm_u in ("µm", "nm", "mm"):
+                    spatial_unit = norm_u
         # Calibrated axes are a fallback only when no explicit pixel size exists.
         # Capture once at import, not from a cropped/zoomed preview.
         if spatial_unit is not None:
             for key, axis in (("x_pixel_size", stack.x_dist), ("y_pixel_size", stack.y_dist)):
                 steps = np.abs(np.diff(np.asarray(axis, dtype=float)))
-                if key not in pixel_sizes and steps.size and steps[0] > 0 and np.allclose(steps, steps[0], rtol=1e-3, atol=1e-9):
-                    pixel_sizes[key] = float(steps[0])
+                if key not in pixel_sizes and steps.size and steps[0] > 0:
+                    med = float(np.median(steps))
+                    if np.allclose(steps, med, rtol=5e-3, atol=1e-9):
+                        pixel_sizes[key] = med
         if any(not np.isfinite(value) or value <= 0 for value in pixel_sizes.values()):
             raise SessionError("Source pixel sizes must be positive finite numbers")
         self.stack = stack

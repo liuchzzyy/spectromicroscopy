@@ -200,33 +200,3 @@ def GetFileStructure(FileName):
         return None
     else:
         return D
-
-
-def preview(filename):
-    """Return a raw first-frame detector preview of the NeXus file."""
-    with h5py.File(filename, 'r') as f:
-        for entry in f:
-            if not hasattr(f[entry], 'attrs'):
-                continue
-            if f[entry].attrs.get('NX_class') in (b'NXentry', 'NXentry', u'NXentry'):
-                for data_name in f[entry]:
-                    group = f[entry][data_name]
-                    if not hasattr(group, 'attrs'):
-                        continue
-                    if group.attrs.get('NX_class') in (b'NXdata', 'NXdata', u'NXdata') and 'data' in group:
-                        d = group['data']
-                        if d.ndim >= 2:
-                            slice_2d = d[(0,) * (d.ndim - 2) + (slice(None), slice(None))]
-                            return {
-                                'kind': 'image',
-                                'width': int(slice_2d.shape[1]),
-                                'height': int(slice_2d.shape[0]),
-                                'values': numpy.asarray(slice_2d, dtype=float).ravel().tolist(),
-                                'shape': list(d.shape),
-                                'frame_count': int(d.shape[0]) if d.ndim > 2 else 1,
-                                'metadata': {
-                                    'entry': entry,
-                                    'data_group': data_name,
-                                }
-                            }
-        raise ValueError('No previewable NXdata dataset found in NeXus file')

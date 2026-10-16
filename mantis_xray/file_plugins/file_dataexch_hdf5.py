@@ -59,36 +59,6 @@ def GetFileStructure(FileName):
     return None
 
 
-def preview(filename):
-    """Return a raw first-frame detector preview of the Data Exchange file."""
-    with h5py.File(filename, 'r') as f:
-        if 'exchange' in f and 'data' in f['exchange']:
-            d = f['exchange/data']
-            if d.ndim == 3:
-                frame = d[:, :, 0].T
-                return {
-                    'kind': 'image',
-                    'width': int(frame.shape[1]),
-                    'height': int(frame.shape[0]),
-                    'values': np.asarray(frame, dtype=float).ravel().tolist(),
-                    'shape': list(d.shape),
-                    'frame_count': int(d.shape[2]),
-                    'metadata': {'format': 'Data Exchange HDF5'}
-                }
-            elif d.ndim == 2:
-                frame = d[()].T
-                return {
-                    'kind': 'image',
-                    'width': int(frame.shape[1]),
-                    'height': int(frame.shape[0]),
-                    'values': np.asarray(frame, dtype=float).ravel().tolist(),
-                    'shape': list(d.shape) + [1],
-                    'frame_count': 1,
-                    'metadata': {'format': 'Data Exchange HDF5'}
-                }
-        raise ValueError('No previewable exchange dataset found in file')
-
-
 #-----------------------------------------------------------------------
 def read(filename, stack_object, selection=None, *args, **kwargs):
     """ToDo: .attrs returns a list in py2 and a set in py3! .attrs and .keys() need to be wrapped in list()"""
