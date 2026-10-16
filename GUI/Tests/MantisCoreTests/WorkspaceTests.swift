@@ -570,9 +570,11 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(pixel.mean, 9)
         let all = try XCTUnwrap(SpectraChart.selectedHistogram(image: image, spectra: spectra,
             selectedSeries: "All spectra", selectedEnergy: 281, activeROI: nil))
+        XCTAssertEqual(all.title, "Visible image pixels · signal distribution")
         XCTAssertEqual(all.counts, [2, 2], "All spectra must not retain the old ROI distribution")
         let roi = try XCTUnwrap(SpectraChart.selectedHistogram(image: image, spectra: spectra,
             selectedSeries: "[1] ROI 1", selectedEnergy: 281, activeROI: "[1] ROI 1"))
+        XCTAssertEqual(roi.title, "Selected ROI pixels · signal distribution")
         XCTAssertEqual(roi.counts, [1, 1])
         XCTAssertEqual(roi.mean, 3.5)
     }

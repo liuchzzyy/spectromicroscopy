@@ -23,6 +23,10 @@ final class InterfacePreferencesTests: XCTestCase {
         XCTAssertEqual(InterfaceText.value("PCA / Clusterings", language: .simplifiedChinese), "PCA / 聚类")
         XCTAssertEqual(InterfaceText.value("Load Data", language: .simplifiedChinese), "导入数据")
         XCTAssertEqual(InterfaceText.value("Open Stack", language: .simplifiedChinese), "打开数据栈")
+        XCTAssertEqual(InterfaceText.value("Visible image pixels · signal distribution", language: .simplifiedChinese), "可见像素 · 信号分布")
+        XCTAssertEqual(InterfaceText.value("Visible image pixels · signal distribution", language: .english), "Visible image pixels · signal distribution")
+        XCTAssertEqual(InterfaceText.value("Selected ROI pixels · signal distribution", language: .simplifiedChinese), "选中 ROI 像素 · 信号分布")
+        XCTAssertEqual(InterfaceText.value("Selected ROI pixels · signal distribution", language: .english), "Selected ROI pixels · signal distribution")
         XCTAssertEqual(InterfaceText.value("Beamline sample A", language: .simplifiedChinese), "Beamline sample A")
         XCTAssertEqual(InterfaceText.value("Open Stack", language: .english), "Open Stack")
     }
