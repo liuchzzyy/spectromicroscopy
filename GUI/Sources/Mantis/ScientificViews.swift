@@ -434,7 +434,7 @@ struct SpectraChart: View {
               let maximum = useROI ? image.roi_maximum : image.maximum,
               let mean = useROI ? image.roi_mean : image.mean else { return nil }
         return HistogramSelection(counts: counts, edges: edges, minimum: minimum, maximum: maximum, mean: mean,
-                                  title: useROI ? "Selected ROI pixels · intensity distribution" : "Visible image pixels · intensity distribution",
+                                  title: useROI ? "Selected ROI pixels · signal distribution" : "Visible image pixels · signal distribution",
                                   help: useROI ? "ROI histogram covers all source pixels selected by the ROI." : "Histogram covers every source pixel in the current view, not the sampled preview.")
     }
     static let histogramMinimumBarPoints: CGFloat = 4
