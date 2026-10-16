@@ -15,7 +15,7 @@ spectral similarity and extract chemical state distributions from synchrotron X-
 This repository provides a native Apple Silicon macOS application built with SwiftUI and AppKit (`GUI/`),
 backed by an isolated private numerical calculation engine.
 
-- **GUI Version**: **1.0.1** (build **2**)
+- **GUI Version**: **1.0.2** (build **3**)
 - **Architecture**: Apple Silicon (arm64), macOS 14.0 (Sonoma) or later
 - **Design & Experience**: Native macOS design adhering to Apple Human Interface Guidelines, Dark and Light mode support, English and Simplified Chinese localization.
 - **Scientific Fidelity**: High-precision numerical calibration preserving source pixel resolution with 5 significant digits (`%#.5g`), strict optical density (OD) semantics, and full-resolution raw array preservation.
@@ -23,22 +23,22 @@ backed by an isolated private numerical calculation engine.
 
 ### Download & Installation
 
-Download the verified Apple Silicon installer from [GitHub Releases](https://github.com/liuchzzyy/spectromicroscopy/releases/tag/v1.0.1):
+Download the verified Apple Silicon installer from [GitHub Releases](https://github.com/liuchzzyy/spectromicroscopy/releases/tag/v1.0.2):
 
-- **DMG Installer**: [`Mantis-1.0.1-arm64.dmg`](https://github.com/liuchzzyy/spectromicroscopy/releases/download/v1.0.1/Mantis-1.0.1-arm64.dmg)
-- **SHA-256 Checksum**: [`Mantis-1.0.1-arm64.dmg.sha256`](https://github.com/liuchzzyy/spectromicroscopy/releases/download/v1.0.1/Mantis-1.0.1-arm64.dmg.sha256)
+- **DMG Installer**: [`Mantis-1.0.2-arm64.dmg`](https://github.com/liuchzzyy/spectromicroscopy/releases/download/v1.0.2/Mantis-1.0.2-arm64.dmg)
+- **SHA-256 Checksum**: [`Mantis-1.0.2-arm64.dmg.sha256`](https://github.com/liuchzzyy/spectromicroscopy/releases/download/v1.0.2/Mantis-1.0.2-arm64.dmg.sha256)
 
 Verify the installer checksum in Terminal:
 ```sh
-shasum -a 256 -c Mantis-1.0.1-arm64.dmg.sha256
+shasum -a 256 -c Mantis-1.0.2-arm64.dmg.sha256
 ```
-Open `Mantis-1.0.1-arm64.dmg` and drag **Mantis.app** to your `/Applications` directory.
+Open `Mantis-1.0.2-arm64.dmg` and drag **Mantis.app** to your `/Applications` directory.
 
 ## Python Distribution (CLI, Library & Engine)
 
 The numerical core is packaged as a single Qt-free Python distribution (`mantis-xray`) providing the CLI, batch processing, and headless JSON-lines engine.
 
-- **CLI/Engine/Library Version**: **3.3.1**
+- **CLI/Engine/Library Version**: **3.3.2**
 - **Runtime**: Python 3.12 (managed via `uv`)
 - **JSON-lines Engine Protocol**: Version **1**
 

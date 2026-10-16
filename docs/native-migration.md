@@ -13,7 +13,7 @@ One Python distribution installs a library, three console scripts (`mantis-xray`
 
 The GUI is a **fully separate product**. It must not discover `mantis-xray` via `$PATH`, import `mantis_xray`, or use the user's Python environment. Its engine is `Mantis.app/Contents/Resources/engine/mantis-engine`, a frozen copy bundled inside the app. GUI updates replace the app **and that private engine only**; CLI upgrades happen in a separate Python environment and cannot replace the engine inside the app, and replacing the app cannot change the Python distribution. The core is shared **source**, not shared mutable installation state.
 
-> **Name collision to keep in mind.** This source distribution is `mantis-xray` **3.3.1** (library, CLI and engine), while the separately versioned macOS GUI is **1.0.1**, build **2**. It retains the historical PyPI distribution name; use `uv sync --locked --python 3.12 --all-extras` from this checkout. A bare `mantis-xray` install targets upstream PyPI, not necessarily this fork's Qt-free source. The native macOS GUI installer is published on GitHub Releases; the Python package is installed from this repository checkout.
+> **Name collision to keep in mind.** This source distribution is `mantis-xray` **3.3.2** (library, CLI and engine), while the separately versioned macOS GUI is **1.0.2**, build **3**. It retains the historical PyPI distribution name; use `uv sync --locked --python 3.12 --all-extras` from this checkout. A bare `mantis-xray` install targets upstream PyPI, not necessarily this fork's Qt-free source. The native macOS GUI installer is published on GitHub Releases; the Python package is installed from this repository checkout.
 
 JSON Lines protocol version **1** is independent of GUI and Python versions. A handshake checks protocol and enumerates supported operations. Breaking protocol changes require a new protocol version and compatibility handling, not equality of product version strings. See [wire contract](native-contract.md).
 
@@ -58,8 +58,8 @@ Prerequisites: Apple Silicon macOS, full Xcode with Swift toolchain, and the abo
 ```sh
 swift test --package-path GUI -c release
 bash scripts/build_gui.sh
-hdiutil verify dist/GUI/Mantis-1.0.1-arm64.dmg
-(cd dist/GUI && shasum -a 256 -c Mantis-1.0.1-arm64.dmg.sha256)
+hdiutil verify dist/GUI/Mantis-1.0.2-arm64.dmg
+(cd dist/GUI && shasum -a 256 -c Mantis-1.0.2-arm64.dmg.sha256)
 ```
 
 The build script freezes the engine, compiles the native GUI, signs the app ad hoc, runs a **standalone process smoke test with no `PYTHONPATH` or CLI**, and builds an arm64 DMG plus checksum. That smoke test drives the real JSON-line engine through handshake, open, PCA with the scree-selected component count, clustering, numeric export and every graphics format (`png`/`pdf`/`svg`); the frozen bundle must therefore include those matplotlib backends, and a missing one fails the build instead of surfacing as a broken export in the GUI. Open the DMG and drag Mantis.app to Applications. It does not install the app automatically. Local ad-hoc signatures verify integrity, **not developer identity**; no Apple Developer ID signing or notarization has been configured. Distribution beyond local testing requires proper signing/notarization and a tested release process.
