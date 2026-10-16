@@ -64,13 +64,18 @@ final class WorkspaceModel: ObservableObject {
         }
     }
     var displayFormatName: String? {
-        if let plugin = inspectionInfo?.plugin { return plugin }
+        if let format = inspectionInfo?.format?.trimmingCharacters(in: .whitespacesAndNewlines), !format.isEmpty {
+            return format
+        }
         let suffix = URL(fileURLWithPath: importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)).pathExtension.lowercased()
         switch suffix {
-        case "hdr": return "SDF"
+        case "hdr", "xim": return "SDF"
         case "h5", "hdf5", "hdf", "nxs", "stxm": return "HDF5"
         case "npz": return "NPZ"
         case "tif", "tiff": return "TIFF"
+        case "xrm", "txrm": return "XRM"
+        case "csv": return "CSV"
+        case "json": return "JSON"
         default:
             return importFileFormat != "all" ? importFileFormat.uppercased() : nil
         }

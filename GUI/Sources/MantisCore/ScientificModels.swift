@@ -242,6 +242,7 @@ public struct FileInspectionSelection: Codable, Sendable, Identifiable, Hashable
 public struct FileInspectionInfo: Codable, Sendable {
     public let path: String
     public let plugin: String
+    public let format: String?
     public let beamline: String?
     public let selections: [FileInspectionSelection]
     public let file_size: Int64?
@@ -249,9 +250,10 @@ public struct FileInspectionInfo: Codable, Sendable {
     public let arrays: [String]?
     public let scan_type: String?
 
-    public init(path: String, plugin: String, beamline: String? = nil, selections: [FileInspectionSelection] = [], file_size: Int64? = nil, shape: [Int]? = nil, arrays: [String]? = nil, scan_type: String? = nil) {
+    public init(path: String, plugin: String, format: String? = nil, beamline: String? = nil, selections: [FileInspectionSelection] = [], file_size: Int64? = nil, shape: [Int]? = nil, arrays: [String]? = nil, scan_type: String? = nil) {
         self.path = path
         self.plugin = plugin
+        self.format = format
         self.beamline = beamline
         self.selections = selections
         self.file_size = file_size

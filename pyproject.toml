@@ -59,6 +59,7 @@ include = ["mantis_xray*"]
 [tool.setuptools.package-data]
 "mantis_xray" = ["Mantis_batch_settings.txt"]
 "mantis_xray.analysis" = ["*.xdr"]
+"mantis_xray.core" = ["*.json"]
 
 
 [tool.setuptools.dynamic]

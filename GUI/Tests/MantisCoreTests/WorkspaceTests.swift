@@ -346,7 +346,7 @@ final class WorkspaceTests: XCTestCase {
 
         model.importFilePath = "/data/test.hdf5"
         model.inspectionInfo = info
-        XCTAssertEqual(model.displayFormatName, "NXstxm")
+        XCTAssertEqual(model.displayFormatName, "HDF5")
         XCTAssertEqual(model.displayBeamlineName, "PolLux X07DA")
         XCTAssertEqual(model.selectedChannelKey, "auto")
         XCTAssertEqual(model.importSelection, "")
@@ -372,6 +372,25 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertNil(model.inspectionInfo)
         XCTAssertEqual(model.displayFormatName, "SDF")
         XCTAssertEqual(model.displayBeamlineName, "Default")
+
+        let mistralJson = """
+        {
+            "path": "/data/mistral.hdf5",
+            "plugin": "MISTRAL-ALBA",
+            "format": "HDF5",
+            "beamline": "MISTRAL (BL09) - ALBA, Spain",
+            "file_size": 870535680,
+            "scan_type": "TXM",
+            "selections": [
+                {"selection": [0, 0], "region": "SpecNormalized", "channel": "data", "shape": [228, 972, 982], "axes": ["energy", "y", "x"], "key": "0_0", "display_name": "SpecNormalized · data (228 × 972 × 982)"}
+            ]
+        }
+        """
+        let mistralInfo = try JSONDecoder().decode(FileInspectionInfo.self, from: mistralJson.data(using: .utf8)!)
+        model.importFilePath = "/data/mistral.hdf5"
+        model.inspectionInfo = mistralInfo
+        XCTAssertEqual(model.displayFormatName, "HDF5")
+        XCTAssertEqual(model.displayBeamlineName, "MISTRAL (BL09) - ALBA, Spain")
     }
     func testSelectedROIHistogramDecodesAndRejectsIncompleteMetadata() throws {
         let image: [String: Any] = ["title": "Intensity", "width": 2, "height": 2,

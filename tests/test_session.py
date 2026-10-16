@@ -653,6 +653,7 @@ def test_nexus_selection_is_explicit_and_never_normalizes_ring_current(tmp_path)
     assert [row["selection"] for row in info["selections"]] == [[0, 0], [0, 1]]
     assert info["file_size"] > 0
     assert "beamline" in info
+    assert info["format"] == "HDF5"
     assert info["selections"][0]["shape"] == [4, 2, 3]
     assert info["selections"][0]["axes"] == ["energy", "sample_y", "sample_x"]
     with pytest.raises(ValueError, match="selection"):
@@ -713,4 +714,18 @@ def test_build_stack_protects_every_source_and_failed_build_is_atomic(tmp_path):
         with pytest.raises(ValueError, match="input"):
             session.dispatch("export", {"path": path, "format": "npz", "overwrite": True})
     assert [open(path, "rb").read() for path in files] == originals
+
+
+def test_inspect_file_resolves_mistral_and_signature_beamline():
+    from pathlib import Path
+    session = session_class()()
+    mistral_path = (
+        Path(__file__).resolve().parent.parent
+        / "docs/Datasets/ALBA_BL09_MISTRAL/mistral_hdf5/20230629_E1A_749.7x177.5y_specnorm_aliOF.hdf5"
+    )
+    if mistral_path.exists():
+        info = session.dispatch("inspect_file", {"path": str(mistral_path)})
+        assert info["format"] == "HDF5"
+        assert info["plugin"] == "MISTRAL-ALBA"
+        assert info["beamline"] == "MISTRAL (BL09) - ALBA, Spain"
 

@@ -709,8 +709,8 @@ struct FileInspectionCardView: View {
                         HStack(spacing: 6) {
                             Text(tr("File Inspection Results"))
                                 .font(.headline)
-                            if let plugin = model.inspectionInfo?.plugin {
-                                Text(plugin)
+                            if let format = model.displayFormatName {
+                                Text(format)
                                     .font(.caption.weight(.semibold))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)

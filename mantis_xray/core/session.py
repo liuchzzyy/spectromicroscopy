@@ -269,8 +269,33 @@ class Session:
                     entry["scan_type"] = str(region_scan_type)
                 selections.append(entry)
 
+        format_name = None
+        suf = path.suffix.lower()
+        if suf in (".h5", ".hdf5", ".hdf", ".nxs", ".stxm"):
+            format_name = "HDF5"
+        elif suf in (".hdr", ".xim"):
+            format_name = "SDF"
+        elif suf in (".tif", ".tiff"):
+            format_name = "TIFF"
+        elif suf == ".npz":
+            format_name = "NPZ"
+        elif suf in (".xrm", ".txrm"):
+            format_name = "XRM"
+        elif suf == ".csv":
+            format_name = "CSV"
+        elif suf == ".json":
+            format_name = "JSON"
+
         beamline = None
-        if path.suffix.lower() in (".h5", ".hdf5", ".hdf", ".nxs"):
+        try:
+            from .beamline_hash_map import inspect_data_file
+            sig_result = inspect_data_file(path)
+            if sig_result.get("matched"):
+                beamline = sig_result.get("beamline")
+        except Exception:
+            pass
+
+        if not beamline and path.suffix.lower() in (".h5", ".hdf5", ".hdf", ".nxs"):
             try:
                 import h5py
                 with h5py.File(path, "r") as archive:
@@ -292,7 +317,7 @@ class Session:
                                 break
             except Exception:
                 pass
-        elif path.suffix.lower() == ".hdr":
+        elif not beamline and path.suffix.lower() == ".hdr":
             try:
                 from ..file_plugins.file_sdf import HDR_FileParser
                 parser = HDR_FileParser(str(path))
@@ -308,7 +333,14 @@ class Session:
         if not beamline and plugin is not None and getattr(plugin, "title", None) == "MISTRAL-ALBA":
             beamline = "MISTRAL"
 
-        res = {"path": str(path), "plugin": plugin.title, "selections": selections, "file_size": file_size, "beamline": beamline}
+        if beamline:
+            try:
+                from .beamline_hash_map import resolve_beamline
+                beamline = resolve_beamline(beamline)
+            except Exception:
+                pass
+
+        res = {"path": str(path), "plugin": plugin.title, "format": format_name, "selections": selections, "file_size": file_size, "beamline": beamline}
         if overall_scan_type:
             res["scan_type"] = overall_scan_type
         if selections and all("shape" in s and s["shape"] == selections[0].get("shape") for s in selections):
