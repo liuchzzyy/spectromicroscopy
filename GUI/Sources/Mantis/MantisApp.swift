@@ -140,6 +140,14 @@ struct MantisApp: App {
             if let section = WorkflowSection.allCases.first(where: { $0.rawValue == raw }) { model.section = section }
             model.connect(); await model.waitUntilIdle()
         }
+        if let inspectPath = argument("--smoke-inspect") {
+            model.connect(); await model.waitUntilIdle()
+            if model.connected {
+                model.importFilePath = inspectPath
+                model.inspectFile()
+                await model.waitUntilIdle()
+            }
+        }
         if let path = argument("--smoke-open") {
             model.connect(); await model.waitUntilIdle()
             if model.connected {
