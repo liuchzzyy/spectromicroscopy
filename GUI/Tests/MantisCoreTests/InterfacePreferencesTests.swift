@@ -41,6 +41,8 @@ final class InterfacePreferencesTests: XCTestCase {
             ("MISTRAL: leave blank", "MISTRAL：留空"),
             ("NXstxm region/channel; e.g. [[0, 0]]", "NXstxm 区域/通道；如 [[0, 0]]"),
             ("Usually leave blank", "通常留空"),
+            ("Default", "默认"),
+            ("Beamline", "线站"),
             ("Default (Auto)", "默认（自动）"),
             ("Channel / Region", "通道 / 区域"),
             ("Custom / Manual JSON…", "自定义 / 手动输入 JSON…"),

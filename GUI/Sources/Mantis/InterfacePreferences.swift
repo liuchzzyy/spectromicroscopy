@@ -120,6 +120,8 @@ enum InterfaceText {
         "Auto / All Supported": "自动识别 / 支持全部格式",
         "Select .hdr, .h5, or .npz file": "选择 .hdr、.h5 或 .npz 文件",
         "Parameters": "参数配置", "Other Parameters": "其他参数",
+        "Default": "默认",
+        "Beamline": "线站",
         "Default (Auto)": "默认（自动）",
         "Channel / Region": "通道 / 区域",
         "Custom / Manual JSON…": "自定义 / 手动输入 JSON…",

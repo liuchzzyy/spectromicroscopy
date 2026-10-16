@@ -243,7 +243,7 @@ enum CLIVersion {
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
         do { try process.run() } catch { return nil }
         var data = Data()
-        let deadline = Date().addingTimeInterval(3)
+        let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
             var bytes = [UInt8](repeating: 0, count: 128)
             let count = Darwin.read(fd, &bytes, bytes.count)

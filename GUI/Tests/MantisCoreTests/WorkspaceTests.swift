@@ -314,6 +314,7 @@ final class WorkspaceTests: XCTestCase {
         {
             "path": "/data/test.hdf5",
             "plugin": "NXstxm",
+            "beamline": "PolLux X07DA",
             "file_size": 1048576,
             "scan_type": "NEXAFS",
             "selections": [
@@ -336,6 +337,7 @@ final class WorkspaceTests: XCTestCase {
         """
         let info = try JSONDecoder().decode(FileInspectionInfo.self, from: json.data(using: .utf8)!)
         XCTAssertEqual(info.plugin, "NXstxm")
+        XCTAssertEqual(info.beamline, "PolLux X07DA")
         XCTAssertEqual(info.file_size, 1048576)
         XCTAssertEqual(info.selections.count, 2)
         XCTAssertEqual(info.selections[0].key, "0_0")
@@ -344,6 +346,8 @@ final class WorkspaceTests: XCTestCase {
 
         model.importFilePath = "/data/test.hdf5"
         model.inspectionInfo = info
+        XCTAssertEqual(model.displayFormatName, "NXstxm")
+        XCTAssertEqual(model.displayBeamlineName, "PolLux X07DA")
         XCTAssertEqual(model.selectedChannelKey, "auto")
         XCTAssertEqual(model.importSelection, "")
 
@@ -366,6 +370,8 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(model.selectedChannelKey, "auto")
         XCTAssertEqual(model.importSelection, "")
         XCTAssertNil(model.inspectionInfo)
+        XCTAssertEqual(model.displayFormatName, "SDF")
+        XCTAssertEqual(model.displayBeamlineName, "Default")
     }
     func testSelectedROIHistogramDecodesAndRejectsIncompleteMetadata() throws {
         let image: [String: Any] = ["title": "Intensity", "width": 2, "height": 2,

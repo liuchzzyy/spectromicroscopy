@@ -105,6 +105,22 @@ def _hash(path):
     return digest.hexdigest()
 
 
+def _clean_str(val):
+    if val is None:
+        return None
+    if isinstance(val, (np.ndarray, list, tuple)):
+        if len(val) == 0:
+            return None
+        val = val[0]
+    if isinstance(val, (bytes, bytearray)):
+        try:
+            val = val.decode("utf-8", "ignore")
+        except Exception:
+            val = str(val)
+    s = str(val).strip()
+    return s if s else None
+
+
 class Session:
     def __init__(self):
         self.stack = _new_stack()
@@ -216,14 +232,14 @@ class Session:
                     raise SessionError("NPZ requires data and energies arrays")
                 return {"path": str(path), "plugin": "MANTiS NPZ", "selections": [],
                         "shape": list(archive["data"].shape), "arrays": list(archive.files),
-                        "file_size": file_size}
+                        "file_size": file_size, "beamline": None}
         if path.suffix.lower() in (".h5", ".hdf5", ".hdf"):
             import h5py
             with h5py.File(path, "r") as archive:
                 if "mantis_session_version" in archive.attrs:
                     return {"path": str(path), "plugin": "MANTiS session HDF5", "selections": [],
                             "shape": list(archive["exchange/data"].shape),
-                            "file_size": file_size}
+                            "file_size": file_size, "beamline": None}
         from .. import file_plugins
         plugin = file_plugins.identify(str(path))
         if plugin is None:
@@ -252,7 +268,47 @@ class Session:
                 if region_scan_type is not None:
                     entry["scan_type"] = str(region_scan_type)
                 selections.append(entry)
-        res = {"path": str(path), "plugin": plugin.title, "selections": selections, "file_size": file_size}
+
+        beamline = None
+        if path.suffix.lower() in (".h5", ".hdf5", ".hdf", ".nxs"):
+            try:
+                import h5py
+                with h5py.File(path, "r") as archive:
+                    if "information/facility/beamline" in archive:
+                        beamline = _clean_str(archive["information/facility/beamline"][()])
+                    elif "information/facility/name" in archive:
+                        beamline = _clean_str(archive["information/facility/name"][()])
+                    if not beamline:
+                        for entry in archive:
+                            if not hasattr(archive[entry], "__getitem__"):
+                                continue
+                            for candidate in ("collection/beamline", "instrument/beamline",
+                                              "instrument/name", "instrument/source/name"):
+                                if candidate in archive[entry]:
+                                    beamline = _clean_str(archive[entry][candidate][()])
+                                    if beamline:
+                                        break
+                            if beamline:
+                                break
+            except Exception:
+                pass
+        elif path.suffix.lower() == ".hdr":
+            try:
+                from ..file_plugins.file_sdf import HDR_FileParser
+                parser = HDR_FileParser(str(path))
+                hdr_dict = getattr(parser, "hdr", None)
+                if isinstance(hdr_dict, dict):
+                    for key in ("Beamline", "Facility", "Instrument"):
+                        if key in hdr_dict:
+                            beamline = _clean_str(hdr_dict[key])
+                            if beamline:
+                                break
+            except Exception:
+                pass
+        if not beamline and plugin is not None and getattr(plugin, "title", None) == "MISTRAL-ALBA":
+            beamline = "MISTRAL"
+
+        res = {"path": str(path), "plugin": plugin.title, "selections": selections, "file_size": file_size, "beamline": beamline}
         if overall_scan_type:
             res["scan_type"] = overall_scan_type
         if selections and all("shape" in s and s["shape"] == selections[0].get("shape") for s in selections):

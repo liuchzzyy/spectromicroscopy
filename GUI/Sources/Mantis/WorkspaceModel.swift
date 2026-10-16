@@ -63,6 +63,24 @@ final class WorkspaceModel: ObservableObject {
             }
         }
     }
+    var displayFormatName: String? {
+        if let plugin = inspectionInfo?.plugin { return plugin }
+        let suffix = URL(fileURLWithPath: importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)).pathExtension.lowercased()
+        switch suffix {
+        case "hdr": return "SDF"
+        case "h5", "hdf5", "hdf", "nxs", "stxm": return "HDF5"
+        case "npz": return "NPZ"
+        case "tif", "tiff": return "TIFF"
+        default:
+            return importFileFormat != "all" ? importFileFormat.uppercased() : nil
+        }
+    }
+    var displayBeamlineName: String {
+        if let beamline = inspectionInfo?.beamline?.trimmingCharacters(in: .whitespacesAndNewlines), !beamline.isEmpty {
+            return beamline
+        }
+        return "Default"
+    }
     struct ImportSelectionGuide {
         let placeholder: String
         let detail: String

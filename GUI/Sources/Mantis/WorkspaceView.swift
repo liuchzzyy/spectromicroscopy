@@ -717,6 +717,12 @@ struct FileInspectionCardView: View {
                                     .background(Theme.accent.opacity(0.14), in: Capsule())
                                     .foregroundStyle(Theme.accent)
                             }
+                            Text(tr(model.displayBeamlineName))
+                                .font(.caption.weight(.medium))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.12), in: Capsule())
+                                .foregroundStyle(.secondary)
                             if let scanType = model.inspectionInfo?.scan_type {
                                 Text(scanType)
                                     .font(.caption)
@@ -903,13 +909,21 @@ struct LoadDataInspector: View {
                             HStack {
                                 Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)
                                 Spacer()
-                                if let plugin = model.inspectionInfo?.plugin {
-                                    Text(plugin)
-                                        .font(.caption2.weight(.semibold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Theme.accent.opacity(0.12), in: Capsule())
-                                        .foregroundStyle(Theme.accent)
+                                if let format = model.displayFormatName {
+                                    HStack(spacing: 4) {
+                                        Text(format)
+                                            .font(.caption2.weight(.semibold))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Theme.accent.opacity(0.12), in: Capsule())
+                                            .foregroundStyle(Theme.accent)
+                                        Text(tr(model.displayBeamlineName))
+                                            .font(.caption2.weight(.medium))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.secondary.opacity(0.12), in: Capsule())
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
 

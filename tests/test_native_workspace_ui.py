@@ -85,6 +85,8 @@ def test_import_channel_picker_and_enhanced_inspection_view():
     section = load.split('Text(tr("Parameters")).font(.headline)', 1)[1].split('Button(tr("Inspect File"))', 1)[0]
     assert 'DisclosureGroup(' not in section
     assert 'Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)' in section
+    assert 'if let format = model.displayFormatName' in section
+    assert 'Text(tr(model.displayBeamlineName))' in section
     assert 'Text(tr("Region / Channel (Optional)"))' not in section
     assert 'Picker(tr("Channel / Region"), selection:' in section
     assert '.accessibilityIdentifier("load.channelPicker")' in section
