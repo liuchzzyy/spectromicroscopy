@@ -45,6 +45,7 @@ final class InterfacePreferencesTests: XCTestCase {
             ("Channel / Region", "通道 / 区域"),
             ("Custom / Manual JSON…", "自定义 / 手动输入 JSON…"),
             ("channel(s) detected", "个可用通道"),
+            ("No channel selection needed", "无需选择通道"),
             ("File Inspection Results", "文件检查结果"),
             ("Detected Channels & Regions", "检测到的通道与区域"),
             ("Use This Channel", "选用此通道"),

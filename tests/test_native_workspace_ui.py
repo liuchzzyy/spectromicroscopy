@@ -91,6 +91,7 @@ def test_import_channel_picker_and_enhanced_inspection_view():
     assert 'TextField(tr(model.importSelectionGuide.placeholder), text: $model.importSelection)' in section
     assert 'model.selectedChannelKey == "manual"' in section
     assert 'Text(tr("Single stack format, no channel selection needed"))' in section
+    assert 'Text(tr("No channel selection needed"))' in section
     assert 'Text(tr("Select channel above or click \'Inspect File\' to detect"))' in section
 
 

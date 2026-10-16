@@ -786,7 +786,7 @@ struct FileInspectionCardView: View {
                                 }
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 6)
-                                .background(isSelected ? Theme.accent.opacity(0.08) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                                .background(isSelected ? Theme.accent.opacity(0.08) : Color(NSColor.controlBackgroundColor).opacity(0.5), in: RoundedRectangle(cornerRadius: 7))
                             }
                         }
                     }
@@ -837,24 +837,6 @@ struct LoadDataInspector: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var preferences: InterfacePreferences
     private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
-
-    private func importHintRow(_ format: String, _ hints: [String]) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Text(format)
-                .font(.caption2.monospaced().weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 42, alignment: .leading)
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(hints, id: \.self) { hint in
-                    Text(tr(hint))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-        .fixedSize(horizontal: false, vertical: true)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -944,6 +926,7 @@ struct LoadDataInspector: View {
                                 Text(tr("Custom / Manual JSON…")).tag("manual")
                             }
                             .labelsHidden()
+                            .accessibilityLabel(tr("Channel / Region"))
                             .disabled(!model.importSelectionGuide.supportsSelection || model.busy)
                             .accessibilityIdentifier("load.channelPicker")
 
@@ -971,7 +954,7 @@ struct LoadDataInspector: View {
                                 } else if !model.importSelectionGuide.supportsSelection {
                                     HStack(spacing: 4) {
                                         Image(systemName: "info.circle").foregroundStyle(.secondary)
-                                        Text(tr("No selection needed"))
+                                        Text(tr("No channel selection needed"))
                                     }
                                 } else {
                                     HStack(spacing: 4) {
