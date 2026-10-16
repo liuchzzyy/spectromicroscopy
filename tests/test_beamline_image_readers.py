@@ -39,7 +39,10 @@ def test_tiff_real_pixels_axes_energy_units(path):
 
 def test_xrm_real_unsigned_pixels_and_calibration():
     import olefile
-    path = next(ROOT.rglob('test_chip00.xrm'))
+    paths = list(ROOT.rglob('test_chip00.xrm'))
+    if not paths:
+        pytest.skip('optional real beamline corpus unavailable')
+    path = paths[0]
     obj = stack()
     file_xrm.read(str(path), obj)
     with olefile.OleFileIO(str(path)) as ole:
@@ -54,7 +57,10 @@ def test_xrm_real_unsigned_pixels_and_calibration():
 
 
 def test_txrm_tomography_is_not_energy_stack():
-    path = next(ROOT.rglob('txrm_test_chip_tomo.txrm'))
+    paths = list(ROOT.rglob('txrm_test_chip_tomo.txrm'))
+    if not paths:
+        pytest.skip('optional real beamline corpus unavailable')
+    path = paths[0]
     with pytest.raises(ValueError, match='tomography'):
         file_xrm.read(str(path), stack())
 
