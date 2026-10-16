@@ -34,6 +34,7 @@ __pycache__/
 *.npz
 # Local beamline source files are never part of the public code history.
 /docs/Sol_240309145/
+/test/
 
 # Editor/agent atomic-write intermediates
 .hermes-tmp.*
