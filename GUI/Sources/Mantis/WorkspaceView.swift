@@ -297,7 +297,7 @@ struct WorkspaceView: View {
                 }
                 HStack {
                     Text(tr("Energy")).font(.caption)
-                    Slider(value: Binding(get: { Double(model.energyIndex) }, set: { model.energyIndex = Int($0) }), in: 0...Double(max(1, (model.snapshot?.energies.count ?? 1)-1)), step: 1, onEditingChanged: { editing in if !editing { model.updateView() } })
+                    Slider(value: Binding(get: { Double(model.energyIndex) }, set: { model.energyIndex = Int(round($0)) }), in: 0...Double(max(1, (model.snapshot?.energies.count ?? 1)-1)), onEditingChanged: { editing in if !editing { model.updateView() } })
                     Text(selectedEnergy.map { String(format: "%.3f eV", $0) } ?? "—").font(.system(.caption, design: .monospaced)).frame(width: 105, alignment: .trailing)
                 }.disabled(model.busy || (model.snapshot?.energies.count ?? 0) < 2)
                 HStack(alignment: .top, spacing: 8) {
@@ -570,7 +570,9 @@ struct ProcessingHistoryView: View {
         case "align": return tr("Align images")
         case "despike": return tr("Despike")
         case "reset": return tr("Restore original stack")
-        default: return method.capitalized
+        case "build_stack": return tr("Build Stack")
+        case "spectral": return tr("Spectral Analysis")
+        default: return tr(method.capitalized)
         }
     }
 
@@ -627,8 +629,10 @@ struct ProcessingHistoryView: View {
     private func formatParamKey(_ key: String) -> String {
         switch key {
         case "path": return tr("Path")
+        case "paths": return tr("File Paths")
         case "pre_normalized": return tr("Optical Density")
         case "energy_index": return tr("Energy Frame")
+        case "energies": return tr("Energies")
         case "x": return "X"
         case "y": return "Y"
         case "roi": return "ROI"
@@ -636,24 +640,52 @@ struct ProcessingHistoryView: View {
         case "viewport": return tr("Viewport")
         case "format": return tr("Format")
         case "dpi": return "DPI"
-        default: return key
+        case "include": return tr("Include")
+        case "overwrite": return tr("Overwrite")
+        case "spectrum_name": return tr("Spectrum Name")
+        case "components": return tr("Components")
+        case "clusters": return tr("Clusters")
+        case "seed": return tr("Random Seed")
+        case "remove_first": return tr("Remove First")
+        case "sigma_split": return tr("Sigma Split")
+        case "bounds": return tr("Bounds")
+        case "energy_range": return tr("Energy Range")
+        case "mode": return tr("Mode")
+        case "reference": return tr("Reference")
+        case "upsample_factor": return tr("Upsample Factor")
+        case "crop": return tr("Crop Overlap")
+        case "value": return tr("Value")
+        case "sigma": return tr("Lee Sigma")
+        case "algorithm": return tr("Algorithm")
+        case "convention": return tr("Convention")
+        case "threshold_percent": return tr("Threshold")
+        case "shifts": return tr("Shifts")
+        case "display": return tr("Display Signal")
+        default: return tr(key.capitalized)
         }
     }
 
     private func formatParamVal(_ val: JSONValue) -> String {
         switch val {
         case .string(let s):
-            return s.contains("/") ? URL(fileURLWithPath: s).lastPathComponent : s
+            if s.contains("/") {
+                return URL(fileURLWithPath: s).lastPathComponent
+            }
+            return tr(s)
         case .bool(let b):
             return b ? tr("Yes") : tr("No")
         case .number(let n):
             return n.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(n))" : String(format: "%.3g", n)
         case .array(let a):
-            return "[\(a.count) items]"
+            if a.allSatisfy({ if case .string = $0 { return true } else { return false } }) {
+                let items = a.compactMap { if case .string(let s) = $0 { return tr(s) } else { return nil } }
+                return items.joined(separator: ", ")
+            }
+            return "[\(a.count) " + tr("items") + "]"
         case .object:
             return "{...}"
         case .null:
-            return "null"
+            return tr("null")
         }
     }
 }

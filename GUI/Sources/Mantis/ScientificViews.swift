@@ -265,10 +265,12 @@ struct ScientificCanvas: View {
         let barLen = min(rect.width * 0.45, max(24, scaleBar.barLengthPoints))
         let barX = rect.maxX - barLen - 12
         let barY = rect.maxY - 14
-        let bgRect = CGRect(x: barX - 6, y: barY - 14, width: barLen + 12, height: 20)
-        context.fill(Path(roundedRect: bgRect, cornerRadius: 4), with: .color(.black.opacity(0.65)))
+        // Direct scale bar without black enclosing background box, using subtle drop-shadow for contrast
+        context.fill(Path(CGRect(x: barX, y: barY + 0.8, width: barLen, height: 2.5)), with: .color(.black.opacity(0.6)))
         context.fill(Path(CGRect(x: barX, y: barY, width: barLen, height: 2.5)), with: .color(.white))
-        context.draw(Text(scaleBar.label).font(.system(size: 9, weight: .bold)).foregroundColor(.white), at: CGPoint(x: barX + barLen / 2, y: barY - 7), anchor: .center)
+        let labelText = Text(scaleBar.label).font(.system(size: 10, weight: .bold))
+        context.draw(labelText.foregroundColor(.black.opacity(0.6)), at: CGPoint(x: barX + barLen / 2 + 0.5, y: barY - 6.5), anchor: .center)
+        context.draw(labelText.foregroundColor(.white), at: CGPoint(x: barX + barLen / 2, y: barY - 7), anchor: .center)
     }
     func pixel(_ p: CGPoint, rect: CGRect) -> (Int, Int) {
         (min(image.x0 + image.visibleWidth - 1, max(image.x0, image.x0 + Int((p.x - rect.minX) / rect.width * Double(image.visibleWidth)))),
