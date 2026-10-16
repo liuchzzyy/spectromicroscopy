@@ -134,7 +134,7 @@ struct WorkspaceView: View {
                     .frame(maxWidth: .infinity, minHeight: 350, alignment: .topLeading).surface()
             }
             if let inspection = model.inspection, model.section == .load {
-                GroupBox(tr("File inspection")) { Text(inspection).font(.system(.caption, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                FileInspectionCardView(model: model, rawJson: inspection)
             }
             resultDetails
         }.padding(Theme.contentInset)
@@ -690,6 +690,149 @@ struct ProcessingHistoryView: View {
     }
 }
 
+struct FileInspectionCardView: View {
+    @ObservedObject var model: WorkspaceModel
+    let rawJson: String
+    @EnvironmentObject private var preferences: InterfacePreferences
+    private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
+    @State private var showRawJson = false
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                // 顶部状态栏
+                HStack(alignment: .center, spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.title3)
+                        .foregroundStyle(Theme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(tr("File Inspection Results"))
+                                .font(.headline)
+                            if let plugin = model.inspectionInfo?.plugin {
+                                Text(plugin)
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Theme.accent.opacity(0.14), in: Capsule())
+                                    .foregroundStyle(Theme.accent)
+                            }
+                            if let scanType = model.inspectionInfo?.scan_type {
+                                Text(scanType)
+                                    .font(.caption)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.secondary.opacity(0.12), in: Capsule())
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if let path = model.inspectionInfo?.path ?? (model.importFilePath.isEmpty ? nil : model.importFilePath) {
+                            Text(path)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer()
+                    if let size = model.inspectionInfo?.file_size {
+                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                            .font(.system(.caption, design: .monospaced).weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Divider()
+
+                // 通道列表或单栈说明
+                if let selections = model.inspectionInfo?.selections, !selections.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(tr("Detected Channels & Regions"))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        VStack(spacing: 4) {
+                            ForEach(selections) { sel in
+                                let isSelected = model.selectedChannelKey == sel.key
+                                HStack {
+                                    Text("[\(sel.selection[0]), \(sel.selection[1])]")
+                                        .font(.system(.caption, design: .monospaced).weight(.bold))
+                                        .frame(width: 48, alignment: .leading)
+
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text("\(sel.region) · \(sel.channel)")
+                                            .font(.callout.weight(.medium))
+                                        if let shape = sel.shape {
+                                            let axesText = sel.axes != nil ? " (\(sel.axes!.joined(separator: ", ")))" : ""
+                                            Text(tr("Dimensions") + ": \(shape.map(String.init).joined(separator: " × "))" + axesText)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    if isSelected {
+                                        Label(tr("Selected"), systemImage: "checkmark.circle.fill")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(Theme.accent)
+                                    } else {
+                                        Button(tr("Use This Channel")) {
+                                            model.selectChannel(region: sel.selection[0], channel: sel.selection[1])
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.bordered)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(isSelected ? Theme.accent.opacity(0.08) : Color.secondary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                    }
+                } else if model.inspectionInfo != nil {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                            .font(.headline)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(tr("This file is a single stack or self-contained format; no channel selection is required."))
+                                .font(.callout)
+                            if let shape = model.inspectionInfo?.shape {
+                                Text(tr("Dimensions") + ": \(shape.map(String.init).joined(separator: " × "))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            if let arrays = model.inspectionInfo?.arrays {
+                                Text(tr("Arrays") + ": \(arrays.joined(separator: ", "))")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(6)
+                }
+
+                DisclosureGroup(tr("Raw Metadata (JSON)"), isExpanded: $showRawJson) {
+                    ScrollView(.horizontal) {
+                        Text(rawJson)
+                            .font(.system(.caption2, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.top, 4)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .padding(4)
+        } label: {
+            Label(tr("File inspection"), systemImage: "info.circle")
+        }
+        .accessibilityIdentifier("load.fileInspectionCard")
+    }
+}
+
 struct LoadDataInspector: View {
     @ObservedObject var model: WorkspaceModel
     @EnvironmentObject private var preferences: InterfacePreferences
@@ -754,6 +897,7 @@ struct LoadDataInspector: View {
                                 Button {
                                     if let chosen = model.chooseFiles()?.first {
                                         model.importFilePath = chosen
+                                        model.inspectFile()
                                     }
                                 } label: {
                                     Image(systemName: "folder")
@@ -774,17 +918,71 @@ struct LoadDataInspector: View {
                             .disabled(model.busy)
 
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)
-                            TextField(tr(model.importSelectionGuide.placeholder), text: $model.importSelection)
-                                .textFieldStyle(.roundedBorder)
-                                .disabled(!model.importSelectionGuide.supportsSelection || model.busy)
-                                .accessibilityLabel(tr("Other Parameters"))
-                                .accessibilityIdentifier("load.selection")
-                            VStack(alignment: .leading, spacing: 4) {
-                                importHintRow("SDF", ["Region/channel; e.g. [[0, 0]]"])
-                                importHintRow("HDF5", ["MISTRAL: leave blank", "NXstxm region/channel; e.g. [[0, 0]]"])
-                                importHintRow("NPZ", ["Usually leave blank"])
+                            HStack {
+                                Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)
+                                Spacer()
+                                if let plugin = model.inspectionInfo?.plugin {
+                                    Text(plugin)
+                                        .font(.caption2.weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Theme.accent.opacity(0.12), in: Capsule())
+                                        .foregroundStyle(Theme.accent)
+                                }
                             }
+
+                            Picker(tr("Channel / Region"), selection: Binding(
+                                get: { model.selectedChannelKey },
+                                set: { model.selectChannelKey($0) }
+                            )) {
+                                Text(tr("Default (Auto)")).tag("auto")
+                                if let selections = model.inspectionInfo?.selections, !selections.isEmpty {
+                                    ForEach(selections) { sel in
+                                        Text(sel.displayName).tag(sel.key)
+                                    }
+                                }
+                                Text(tr("Custom / Manual JSON…")).tag("manual")
+                            }
+                            .labelsHidden()
+                            .disabled(!model.importSelectionGuide.supportsSelection || model.busy)
+                            .accessibilityIdentifier("load.channelPicker")
+
+                            if model.selectedChannelKey == "manual" {
+                                TextField(tr(model.importSelectionGuide.placeholder), text: $model.importSelection)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(!model.importSelectionGuide.supportsSelection || model.busy)
+                                    .accessibilityLabel(tr("Other Parameters"))
+                                    .accessibilityIdentifier("load.selection")
+                            }
+
+                            Group {
+                                if let info = model.inspectionInfo {
+                                    if !info.selections.isEmpty {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent)
+                                            Text("\(info.plugin) · \(info.selections.count) " + tr("channel(s) detected"))
+                                        }
+                                    } else {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
+                                            Text(tr("Single stack format, no channel selection needed"))
+                                        }
+                                    }
+                                } else if !model.importSelectionGuide.supportsSelection {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "info.circle").foregroundStyle(.secondary)
+                                        Text(tr("No selection needed"))
+                                    }
+                                } else {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "info.circle").foregroundStyle(.secondary)
+                                        Text(tr("Select channel above or click 'Inspect File' to detect"))
+                                    }
+                                }
+                            }
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                         }
                         .accessibilityIdentifier("load.selectionParameters")
 

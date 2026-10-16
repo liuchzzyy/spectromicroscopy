@@ -203,3 +203,58 @@ public enum WorkflowSection: String, CaseIterable, Identifiable, Sendable {
         }
     }
 }
+
+public struct FileInspectionSelection: Codable, Sendable, Identifiable, Hashable {
+    public var id: String { "\(selection.map(String.init).joined(separator: "_"))_\(region)_\(channel)" }
+    public let selection: [Int]
+    public let region: String
+    public let channel: String
+    public let shape: [Int]?
+    public let axes: [String]?
+    public let scan_type: String?
+
+    public init(selection: [Int], region: String, channel: String, shape: [Int]? = nil, axes: [String]? = nil, scan_type: String? = nil) {
+        self.selection = selection
+        self.region = region
+        self.channel = channel
+        self.shape = shape
+        self.axes = axes
+        self.scan_type = scan_type
+    }
+
+    public var key: String {
+        selection.count == 2 ? "\(selection[0])_\(selection[1])" : selection.map(String.init).joined(separator: "_")
+    }
+
+    public var displayName: String {
+        var name = "[\(selection.map(String.init).joined(separator: ", "))] \(region) · \(channel)"
+        if let shape = shape, !shape.isEmpty {
+            name += " (\(shape.map(String.init).joined(separator: " × "))"
+            if let scan_type, !scan_type.isEmpty {
+                name += " · \(scan_type)"
+            }
+            name += ")"
+        }
+        return name
+    }
+}
+
+public struct FileInspectionInfo: Codable, Sendable {
+    public let path: String
+    public let plugin: String
+    public let selections: [FileInspectionSelection]
+    public let file_size: Int64?
+    public let shape: [Int]?
+    public let arrays: [String]?
+    public let scan_type: String?
+
+    public init(path: String, plugin: String, selections: [FileInspectionSelection] = [], file_size: Int64? = nil, shape: [Int]? = nil, arrays: [String]? = nil, scan_type: String? = nil) {
+        self.path = path
+        self.plugin = plugin
+        self.selections = selections
+        self.file_size = file_size
+        self.shape = shape
+        self.arrays = arrays
+        self.scan_type = scan_type
+    }
+}

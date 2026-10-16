@@ -308,6 +308,65 @@ final class WorkspaceTests: XCTestCase {
         model.importSelection = "[[0,0]]"
         XCTAssertThrowsError(try model.parsedImportSelection(), "NPZ has no selectable region/channel")
     }
+    func testFileInspectionDecodesAndChannelPickerSelectsInteractiveSelections() throws {
+        let model = WorkspaceModel(preview: true)
+        let json = """
+        {
+            "path": "/data/test.hdf5",
+            "plugin": "NXstxm",
+            "file_size": 1048576,
+            "scan_type": "NEXAFS",
+            "selections": [
+                {
+                    "selection": [0, 0],
+                    "region": "entry",
+                    "channel": "detector0",
+                    "shape": [4, 2, 3],
+                    "axes": ["energy", "sample_y", "sample_x"],
+                    "scan_type": "NEXAFS"
+                },
+                {
+                    "selection": [0, 1],
+                    "region": "entry",
+                    "channel": "detector1",
+                    "shape": [4, 2, 3]
+                }
+            ]
+        }
+        """
+        let info = try JSONDecoder().decode(FileInspectionInfo.self, from: json.data(using: .utf8)!)
+        XCTAssertEqual(info.plugin, "NXstxm")
+        XCTAssertEqual(info.file_size, 1048576)
+        XCTAssertEqual(info.selections.count, 2)
+        XCTAssertEqual(info.selections[0].key, "0_0")
+        XCTAssertTrue(info.selections[0].displayName.contains("detector0"))
+        XCTAssertTrue(info.selections[0].displayName.contains("4 × 2 × 3"))
+
+        model.importFilePath = "/data/test.hdf5"
+        model.inspectionInfo = info
+        XCTAssertEqual(model.selectedChannelKey, "auto")
+        XCTAssertEqual(model.importSelection, "")
+
+        model.selectChannelKey("0_1")
+        XCTAssertEqual(model.selectedChannelKey, "0_1")
+        XCTAssertEqual(model.importSelection, "[[0, 1]]")
+        XCTAssertEqual(try model.parsedImportSelection(), .array([.array([.number(0), .number(1)])]))
+
+        model.selectChannel(region: 0, channel: 0)
+        XCTAssertEqual(model.selectedChannelKey, "0_0")
+        XCTAssertEqual(model.importSelection, "[[0, 0]]")
+
+        model.selectChannelKey("auto")
+        XCTAssertEqual(model.selectedChannelKey, "auto")
+        XCTAssertEqual(model.importSelection, "")
+        XCTAssertNil(try model.parsedImportSelection())
+
+        model.selectChannelKey("0_0")
+        model.importFilePath = "/data/another.hdr"
+        XCTAssertEqual(model.selectedChannelKey, "auto")
+        XCTAssertEqual(model.importSelection, "")
+        XCTAssertNil(model.inspectionInfo)
+    }
     func testSelectedROIHistogramDecodesAndRejectsIncompleteMetadata() throws {
         let image: [String: Any] = ["title": "Intensity", "width": 2, "height": 2,
                                     "full_width": 2, "full_height": 2, "values": [1, 2, 3, 4],

@@ -651,6 +651,9 @@ def test_nexus_selection_is_explicit_and_never_normalizes_ring_current(tmp_path)
     session = session_class()()
     info = session.dispatch("inspect_file", {"path": str(path)})
     assert [row["selection"] for row in info["selections"]] == [[0, 0], [0, 1]]
+    assert info["file_size"] > 0
+    assert info["selections"][0]["shape"] == [4, 2, 3]
+    assert info["selections"][0]["axes"] == ["energy", "sample_y", "sample_x"]
     with pytest.raises(ValueError, match="selection"):
         session.dispatch("open", {"path": str(path)})
     result = session.dispatch("open", {"path": str(path), "selection": [[0, 1]]})

@@ -13,6 +13,8 @@ final class WorkspaceModel: ObservableObject {
     @Published var status = "Not connected"
     @Published var error: String?
     @Published var inspection: String?
+    @Published var inspectionInfo: FileInspectionInfo?
+    @Published var selectedChannelKey: String = "auto"
     @Published var openAsOpticalDensity = false
     @Published var selectedImage = 0
     @Published var energyIndex = 0
@@ -35,12 +37,32 @@ final class WorkspaceModel: ObservableObject {
     // Load Data - Import settings
     @Published var importFileMode = "single" // "single" or "merge"
     @Published var importFileFormat = "all" {
-        didSet { if oldValue != importFileFormat { importSelection = "" } }
+        didSet {
+            if oldValue != importFileFormat {
+                importSelection = ""
+                inspection = nil
+                inspectionInfo = nil
+                selectedChannelKey = "auto"
+            }
+        }
     }
     @Published var importFilePath = "" {
-        didSet { if oldValue != importFilePath { importSelection = "" } }
+        didSet {
+            if oldValue != importFilePath {
+                importSelection = ""
+                inspection = nil
+                inspectionInfo = nil
+                selectedChannelKey = "auto"
+            }
+        }
     }
-    @Published var importSelection = ""
+    @Published var importSelection = "" {
+        didSet {
+            if oldValue != importSelection {
+                syncChannelKeyFromSelection()
+            }
+        }
+    }
     struct ImportSelectionGuide {
         let placeholder: String
         let detail: String
@@ -88,6 +110,43 @@ final class WorkspaceModel: ObservableObject {
             throw EngineFailure("parameter", "Region/channel pairs must be nonnegative integer JSON pairs like [[0,0]].")
         }
         return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
+    func selectChannel(region: Int, channel: Int) {
+        let key = "\(region)_\(channel)"
+        selectedChannelKey = key
+        importSelection = "[[\(region), \(channel)]]"
+    }
+    func selectChannelKey(_ key: String) {
+        selectedChannelKey = key
+        if key == "auto" {
+            importSelection = ""
+        } else if key == "manual" {
+            // retain current importSelection for manual editing
+        } else if let sel = inspectionInfo?.selections.first(where: { $0.key == key }) {
+            importSelection = "[[\(sel.selection[0]), \(sel.selection[1])]]"
+        }
+    }
+    func syncChannelKeyFromSelection() {
+        let trimmed = importSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            if selectedChannelKey != "auto" { selectedChannelKey = "auto" }
+            return
+        }
+        guard let data = trimmed.data(using: .utf8),
+              let pairs = try? JSONSerialization.jsonObject(with: data) as? [[Any]],
+              pairs.count == 1,
+              let pair = pairs.first, pair.count == 2,
+              let r = pair[0] as? Int,
+              let c = pair[1] as? Int else {
+            if selectedChannelKey != "manual" { selectedChannelKey = "manual" }
+            return
+        }
+        let key = "\(r)_\(c)"
+        if inspectionInfo?.selections.contains(where: { $0.key == key }) == true {
+            if selectedChannelKey != key { selectedChannelKey = key }
+        } else {
+            if selectedChannelKey != "manual" { selectedChannelKey = "manual" }
+        }
     }
     @Published var mergeFilePaths: [String] = []
     @Published var mergeEnergiesText = ""
@@ -409,6 +468,10 @@ final class WorkspaceModel: ObservableObject {
                     handshake = try JSONDecoder().decode(EngineHello.self, from: data)
                 } else if method == "inspect_file" {
                     inspection = Self.pretty(data)
+                    if let decoded = try? JSONDecoder().decode(FileInspectionInfo.self, from: data) {
+                        inspectionInfo = decoded
+                        syncChannelKeyFromSelection()
+                    }
                 } else {
                     let next = try Snapshot.decode(data)
                     accept(next, method: method, target: target)
@@ -459,7 +522,7 @@ final class WorkspaceModel: ObservableObject {
         operation = nil; clearSession(); busy = false
     }
     private func clearSession() {
-        snapshot = nil; results.removeAll(); handshake = nil; rectangle = nil; polygon = nil; pendingPixel = nil; inspection = nil
+        snapshot = nil; results.removeAll(); handshake = nil; rectangle = nil; polygon = nil; pendingPixel = nil; inspection = nil; inspectionInfo = nil; selectedChannelKey = "auto"
         stackView = nil; selectedImage = 0; energyIndex = 0; thetaIndex = 0; display = "intensity"; viewport = nil; zoomLevel = 1; engineView = .stack
         interactionPoint = nil
         rois.removeAll(); selectedROIIndex = nil; selectedNonROISeries = "All spectra"; roiWarning = nil
@@ -729,6 +792,9 @@ final class WorkspaceModel: ObservableObject {
         let path = importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !path.isEmpty else { return }
         section = .load
+        if client == nil {
+            connect()
+        }
         run("inspect_file", ["path": .string(path)])
     }
     func exportProcessedData() {

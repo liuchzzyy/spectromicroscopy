@@ -209,28 +209,55 @@ class Session:
 
     def inspect_file(self, path):
         path = self._file_path(path)
+        file_size = path.stat().st_size
         if path.suffix.lower() == ".npz":
             with np.load(path, allow_pickle=False) as archive:
                 if not {"data", "energies"}.issubset(archive.files):
                     raise SessionError("NPZ requires data and energies arrays")
                 return {"path": str(path), "plugin": "MANTiS NPZ", "selections": [],
-                        "shape": list(archive["data"].shape), "arrays": list(archive.files)}
+                        "shape": list(archive["data"].shape), "arrays": list(archive.files),
+                        "file_size": file_size}
         if path.suffix.lower() in (".h5", ".hdf5", ".hdf"):
             import h5py
             with h5py.File(path, "r") as archive:
                 if "mantis_session_version" in archive.attrs:
                     return {"path": str(path), "plugin": "MANTiS session HDF5", "selections": [],
-                            "shape": list(archive["exchange/data"].shape)}
+                            "shape": list(archive["exchange/data"].shape),
+                            "file_size": file_size}
         from .. import file_plugins
         plugin = file_plugins.identify(str(path))
         if plugin is None:
             raise SessionError(f"Unsupported file format: {path.suffix}", "unsupported_format")
         structure = file_plugins.GetFileStructure(str(path), plugin=plugin)
         selections = []
+        overall_scan_type = None
         for region, (name, channels) in enumerate((structure or {}).items()):
+            region_shape = getattr(channels, "data_shape", None)
+            region_axes = getattr(channels, "data_axes", None)
+            region_scan_type = getattr(channels, "scan_type", None)
+            if region_scan_type and not overall_scan_type:
+                overall_scan_type = str(region_scan_type)
             for channel, label in enumerate(channels):
-                selections.append({"selection": [region, channel], "region": str(name), "channel": str(label)})
-        return {"path": str(path), "plugin": plugin.title, "selections": selections}
+                entry = {"selection": [region, channel], "region": str(name), "channel": str(label)}
+                if region_shape is not None:
+                    try:
+                        entry["shape"] = [int(x) for x in region_shape]
+                    except Exception:
+                        pass
+                if region_axes is not None:
+                    try:
+                        entry["axes"] = [str(x) for x in region_axes]
+                    except Exception:
+                        pass
+                if region_scan_type is not None:
+                    entry["scan_type"] = str(region_scan_type)
+                selections.append(entry)
+        res = {"path": str(path), "plugin": plugin.title, "selections": selections, "file_size": file_size}
+        if overall_scan_type:
+            res["scan_type"] = overall_scan_type
+        if selections and all("shape" in s and s["shape"] == selections[0].get("shape") for s in selections):
+            res["shape"] = selections[0]["shape"]
+        return res
 
     def _load_plugin(self, path, selection):
         from .. import file_plugins
