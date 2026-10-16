@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 import pytest
 
-from mantis_xray.core.session import Session, intensity_to_od
+from mantis_xray.core.session import Session
 
 
 @pytest.fixture
@@ -32,8 +32,8 @@ def sample_session(tmp_path):
         ]
     })
 
-    # Convert intensity to OD and run PCA / Clustering
-    session.dispatch("view", {"display": "od"})
+    # Normalize stack to enable OD and run PCA / Clustering
+    session.dispatch("normalize", {"mode": "roi", "bounds": [0, 0, 2, 2]})
     session.dispatch("pca", {"components": 2})
     session.dispatch("cluster", {"clusters": 2, "components": 2, "seed": 42})
 
@@ -60,8 +60,9 @@ def test_data_export_npz_full_and_selective(sample_session, tmp_path):
         assert "results/cluster/cluster_indices" in archive
         np.testing.assert_allclose(archive["raw_data"], data)
         np.testing.assert_allclose(archive["energies"], energies)
-        # Stored OD should match -ln(data)
-        np.testing.assert_allclose(archive["od"], -np.log(data), rtol=1e-5)
+        # Stored OD should match session computed OD
+        assert archive["od"].shape == data.shape
+        np.testing.assert_allclose(archive["od"], session.stack.od3d)
 
     # 1.2 Processed-only NPZ export
     target_proc = tmp_path / "processed_only.npz"
