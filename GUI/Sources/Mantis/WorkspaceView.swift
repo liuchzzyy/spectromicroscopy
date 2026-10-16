@@ -695,6 +695,24 @@ struct LoadDataInspector: View {
     @EnvironmentObject private var preferences: InterfacePreferences
     private func tr(_ key: String) -> String { InterfaceText.value(key, language: preferences.language) }
 
+    private func importHintRow(_ format: String, _ hints: [String]) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(format)
+                .font(.caption2.monospaced().weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 42, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(hints, id: \.self) { hint in
+                    Text(tr(hint))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // 1. 导入设置 (Import Options)
@@ -755,11 +773,20 @@ struct LoadDataInspector: View {
                             .help(tr("This declaration applies to the next file you open; it never changes the current stack."))
                             .disabled(model.busy)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(tr("Region / Channel (Optional)")).font(.caption2).foregroundStyle(.secondary)
-                            TextField(tr("e.g. [[0, 0]] or blank"), text: $model.importSelection)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)
+                            TextField(tr(model.importSelectionGuide.placeholder), text: $model.importSelection)
                                 .textFieldStyle(.roundedBorder)
+                                .disabled(!model.importSelectionGuide.supportsSelection || model.busy)
+                                .accessibilityLabel(tr("Other Parameters"))
+                                .accessibilityIdentifier("load.selection")
+                            VStack(alignment: .leading, spacing: 4) {
+                                importHintRow("SDF", ["Region/channel; e.g. [[0, 0]]"])
+                                importHintRow("HDF5", ["MISTRAL: leave blank", "NXstxm region/channel; e.g. [[0, 0]]"])
+                                importHintRow("NPZ", ["Usually leave blank"])
+                            }
                         }
+                        .accessibilityIdentifier("load.selectionParameters")
 
                         HStack(spacing: 8) {
                             Button(tr("Inspect File")) {

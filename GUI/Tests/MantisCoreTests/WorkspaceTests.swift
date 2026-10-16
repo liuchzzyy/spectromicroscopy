@@ -252,6 +252,62 @@ final class WorkspaceTests: XCTestCase {
         XCTAssertEqual(model.imageExportDPI, 600)
         XCTAssertEqual(model.logExportFormat, "md")
     }
+    func testImportSelectionGuidanceUsesActualFileFormatWithoutInjectingExamples() throws {
+        let model = WorkspaceModel(preview: true)
+        model.importFileFormat = "hdr"
+        XCTAssertEqual(model.importSelectionGuide.placeholder, "e.g. [[0, 0]] (optional)")
+        XCTAssertTrue(model.importSelectionGuide.detail.contains("SDF"))
+        XCTAssertNil(try model.parsedImportSelection(), "An example must not become an implicit selection")
+
+        model.importFilePath = "/samples/scan.hdf5.hdf5"
+        XCTAssertEqual(model.importSelectionGuide.placeholder, "Leave blank unless selection is required")
+        XCTAssertTrue(model.importSelectionGuide.detail.contains("NXstxm"), "Not all HDF5 files are single-channel")
+        XCTAssertNil(try model.parsedImportSelection())
+        model.importFilePath = "/samples/stack.npz"
+        XCTAssertFalse(model.importSelectionGuide.supportsSelection)
+    }
+    func testImportSelectionGuideUsesLocalizedPlaceholderAndCompactExamples() throws {
+        let model = WorkspaceModel(preview: true)
+        for (format, placeholder) in [("all", "e.g. [[0, 0]] (optional)"),
+                                      ("hdr", "e.g. [[0, 0]] (optional)"),
+                                      ("hdf5", "Leave blank unless selection is required"),
+                                      ("npz", "No selection needed")] {
+            model.importFileFormat = format
+            XCTAssertEqual(model.importSelectionGuide.placeholder, placeholder)
+            XCTAssertNotEqual(InterfaceText.value(placeholder, language: .simplifiedChinese), placeholder,
+                              "Every on-screen placeholder needs a Chinese translation")
+        }
+        for (english, chinese) in [
+            ("Region/channel; e.g. [[0, 0]]", "区域/通道；如 [[0, 0]]"),
+            ("MISTRAL: leave blank", "MISTRAL：留空"),
+            ("NXstxm region/channel; e.g. [[0, 0]]", "NXstxm 区域/通道；如 [[0, 0]]"),
+            ("Usually leave blank", "通常留空")
+        ] {
+            XCTAssertEqual(InterfaceText.value(english, language: .simplifiedChinese), chinese)
+            XCTAssertEqual(InterfaceText.value(english, language: .english), english)
+        }
+    }
+    func testImportSelectionRejectsMalformedPairsAndClearsWhenSourceChanges() throws {
+        let model = WorkspaceModel(preview: true)
+        model.importFilePath = "/samples/first.hdr"
+        model.importSelection = "[[0,1],[1,0]]"
+        XCTAssertEqual(try model.parsedImportSelection(), .array([
+            .array([.number(0), .number(1)]), .array([.number(1), .number(0)])
+        ]))
+        model.importFilePath = "/samples/other.hdf5"
+        XCTAssertEqual(model.importSelection, "", "An old SDF region cannot silently select an HDF5 channel")
+        model.importSelection = "[[0,0]]"
+        model.importFileFormat = "npz"
+        XCTAssertEqual(model.importSelection, "")
+        for invalid in ["[]", "[0,0]", "[[0]]", "[[0,1.5]]", "[[0.0,0]]", "[[0e0,0]]", "[[true,0]]", "[[-1,0]]", "[[0,0,0]]", "[[9007199254740992,0]]", "hello"] {
+            model.importFilePath = "/samples/first.hdr"
+            model.importSelection = invalid
+            XCTAssertThrowsError(try model.parsedImportSelection(), "Invalid input: \(invalid)")
+        }
+        model.importFilePath = "/samples/stack.npz"
+        model.importSelection = "[[0,0]]"
+        XCTAssertThrowsError(try model.parsedImportSelection(), "NPZ has no selectable region/channel")
+    }
     func testSelectedROIHistogramDecodesAndRejectsIncompleteMetadata() throws {
         let image: [String: Any] = ["title": "Intensity", "width": 2, "height": 2,
                                     "full_width": 2, "full_height": 2, "values": [1, 2, 3, 4],

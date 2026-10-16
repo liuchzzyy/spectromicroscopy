@@ -34,9 +34,61 @@ final class WorkspaceModel: ObservableObject {
 
     // Load Data - Import settings
     @Published var importFileMode = "single" // "single" or "merge"
-    @Published var importFileFormat = "all"
-    @Published var importFilePath = ""
+    @Published var importFileFormat = "all" {
+        didSet { if oldValue != importFileFormat { importSelection = "" } }
+    }
+    @Published var importFilePath = "" {
+        didSet { if oldValue != importFilePath { importSelection = "" } }
+    }
     @Published var importSelection = ""
+    struct ImportSelectionGuide {
+        let placeholder: String
+        let detail: String
+        let supportsSelection: Bool
+    }
+    var importSelectionGuide: ImportSelectionGuide {
+        // The chosen file is authoritative; the format picker is only a hint before a path is entered.
+        let suffix = URL(fileURLWithPath: importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)).pathExtension.lowercased()
+        let format: String
+        switch suffix {
+        case "hdr": format = "hdr"
+        case "h5", "hdf5", "hdf", "nxs", "stxm": format = "hdf5"
+        case "npz": format = "npz"
+        default: format = importFileFormat
+        }
+        switch format {
+        case "hdr": return ImportSelectionGuide(placeholder: "e.g. [[0, 0]] (optional)",
+            detail: "SDF: parameter 1 = region index, parameter 2 = channel index (zero-based); e.g. [[0, 0]]. Leave blank for one pair; inspect multi-pair files.", supportsSelection: true)
+        case "hdf5": return ImportSelectionGuide(placeholder: "Leave blank unless selection is required",
+            detail: "HDF5: MISTRAL/Exchange need no selection; inspect multi-channel NXstxm and enter [[region, channel]] if required.", supportsSelection: true)
+        case "npz": return ImportSelectionGuide(placeholder: "No selection needed",
+            detail: "NPZ: region/channel selection is not available.", supportsSelection: false)
+        default: return ImportSelectionGuide(placeholder: "e.g. [[0, 0]] (optional)",
+            detail: "Optional zero-based [[region, channel]] pairs. Inspect the file before choosing when multiple pairs exist.", supportsSelection: true)
+        }
+    }
+    func parsedImportSelection() throws -> JSONValue? {
+        let text = importSelection.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return nil }
+        guard importSelectionGuide.supportsSelection else {
+            throw EngineFailure("parameter", "This format has no region/channel selection; leave this field blank.")
+        }
+        guard let data = text.data(using: .utf8),
+              let pairs = try? JSONSerialization.jsonObject(with: data) as? [[Any]],
+              !pairs.isEmpty,
+              pairs.allSatisfy({ indices in
+                  indices.count == 2 && indices.allSatisfy({ index in
+                      guard let number = index as? NSNumber,
+                            CFGetTypeID(number) != CFBooleanGetTypeID(),
+                            !["d", "f"].contains(String(cString: number.objCType)) else { return false }
+                      let value = number.int64Value
+                      return value >= 0 && value <= 9_007_199_254_740_991
+                  })
+              }) else {
+            throw EngineFailure("parameter", "Region/channel pairs must be nonnegative integer JSON pairs like [[0,0]].")
+        }
+        return try JSONDecoder().decode(JSONValue.self, from: data)
+    }
     @Published var mergeFilePaths: [String] = []
     @Published var mergeEnergiesText = ""
 
@@ -649,17 +701,12 @@ final class WorkspaceModel: ObservableObject {
             }
             return
         }
-        var selectionVal: JSONValue? = nil
-        let selStr = importSelection.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !selStr.isEmpty {
-            if let data = selStr.data(using: .utf8), let parsed = try? JSONDecoder().decode(JSONValue.self, from: data) {
-                selectionVal = parsed
-            } else {
-                self.error = "Region/channel pairs must be valid JSON like [[0,0]]."
-                return
-            }
+        do {
+            let selection = try parsedImportSelection()
+            openStack(at: URL(fileURLWithPath: path), selection: selection)
+        } catch {
+            self.error = error.localizedDescription
         }
-        openStack(at: URL(fileURLWithPath: path), selection: selectionVal)
     }
     func importMergedStack() {
         guard !mergeFilePaths.isEmpty else {

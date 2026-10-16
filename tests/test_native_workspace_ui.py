@@ -76,6 +76,21 @@ def test_inspector_preserves_gutters_and_uses_readable_titles():
     assert '.frame(width: 76)' in image
 
 
+def test_import_selection_field_is_visible_with_aligned_format_examples():
+    load = VIEWS.read_text().split('struct LoadDataInspector: View', 1)[1].split('struct ParameterInspector: View', 1)[0]
+    section = load.split('Text(tr("Parameters")).font(.headline)', 1)[1].split('Button(tr("Inspect File"))', 1)[0]
+    assert 'DisclosureGroup(' not in section
+    assert 'Text(tr("Other Parameters")).font(.callout.weight(.semibold)).foregroundStyle(.primary)' in section
+    assert 'Text(tr("Region / Channel (Optional)"))' not in section
+    assert 'TextField(tr(model.importSelectionGuide.placeholder), text: $model.importSelection)' in section
+    assert 'Text(tr("File format · Parameters · Input style"))' not in section
+    assert 'private func importHintRow(' in load
+    assert 'importHintRow("HDF5", ["MISTRAL: leave blank", "NXstxm region/channel; e.g. [[0, 0]]"])' in section
+    assert 'importHintRow("SDF", ["Region/channel; e.g. [[0, 0]]"])' in section
+    assert 'importHintRow("NPZ", ["Usually leave blank"])' in section
+    assert section.index('TextField(tr(model.importSelectionGuide.placeholder)') < section.index('importHintRow("SDF",')
+
+
 def test_display_limits_keep_each_label_on_one_line_in_one_row():
     source = VIEWS.read_text()
     limits = source.split('.accessibilityIdentifier("display.contrast.range")', 1)[0].rsplit('HStack(spacing: 12)', 1)[-1]
