@@ -89,10 +89,45 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                         "matched": True,
                     }
 
+                # Diamond I08 NeXus
+                if "entry1/Counter1" in f:
+                    return {
+                        "format": "NeXus NXstxm HDF5",
+                        "plugin": "file_nexus_hdf5",
+                        "beamline": "I08-1 - DLS, UK",
+                        "facility": "DLS",
+                        "country": "UK",
+                        "matched_signature": "DIAMOND_I08_NXSTXM",
+                        "matched_field": "Group: entry1/Counter1",
+                        "matched": True,
+                    }
+
                 # NeXus NXstxm with collection/beamline
                 for entry_name in f:
                     entry = f[entry_name]
                     if hasattr(entry, "__getitem__"):
+                        if "DIFFABS" in entry or "diffabs" in entry_name.lower():
+                            return {
+                                "format": "NeXus Scan HDF5",
+                                "plugin": "file_nexus_scan",
+                                "beamline": "DIFFABS - SOLEIL, France",
+                                "facility": "SOLEIL",
+                                "country": "France",
+                                "matched_signature": "SOLEIL_DIFFABS_NEXUS",
+                                "matched_field": "Group: DIFFABS",
+                                "matched": True,
+                            }
+                        if "SWING" in entry or "swing" in entry_name.lower():
+                            return {
+                                "format": "NeXus Scan HDF5",
+                                "plugin": "file_nexus_scan",
+                                "beamline": "SWING - SOLEIL, France",
+                                "facility": "SOLEIL",
+                                "country": "France",
+                                "matched_signature": "SOLEIL_SWING_NEXUS",
+                                "matched_field": "Group: SWING",
+                                "matched": True,
+                            }
                         bl_path = f"{entry_name}/collection/beamline"
                         if bl_path in f:
                             try:
@@ -218,7 +253,43 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 3. Text / XAFS inspection (.dat, .xdi, .txt)
+    # 3. TIFF inspection
+    elif ext in [".tif", ".tiff"]:
+        if re.match(r"^\d{8}\.tiff?$", path.name):
+            return {
+                "format": "TIFF Stack",
+                "plugin": "file_tif",
+                "beamline": "STXM (11.0.2.2) - ALS, USA",
+                "facility": "ALS",
+                "country": "USA",
+                "matched_signature": "ALS_1102_TIFF",
+                "matched_field": f"8-digit TIFF scan ({path.name})",
+                "matched": True,
+            }
+        elif path.name.startswith("Cat2_RT") or "Cat2_RT" in path.name:
+            return {
+                "format": "TIFF Image",
+                "plugin": "file_tif",
+                "beamline": "I18 - DLS, UK",
+                "facility": "DLS",
+                "country": "UK",
+                "matched_signature": "DIAMOND_I18_TIFF",
+                "matched_field": f"DLS I18 Cat2_RT prefix ({path.name})",
+                "matched": True,
+            }
+        elif path.name in ("nanoXANES_Fe.tiff", "Ni_xanes.tiff") or (path.parent / "energy_list_corr.txt").is_file() or (path.parent / "Ni_eng_list.txt").is_file():
+            return {
+                "format": "TXM-XANES TIFF Stack",
+                "plugin": "file_tif",
+                "beamline": "HXN (3-ID) - NSLS-II, USA",
+                "facility": "NSLS-II",
+                "country": "USA",
+                "matched_signature": "NSLS2_HXN_TIFF",
+                "matched_field": f"NSLS-II HXN TIFF ({path.name})",
+                "matched": True,
+            }
+
+    # 4. Text / XAFS inspection (.dat, .xdi, .txt)
     elif ext in [".dat", ".xdi", ".txt"]:
         try:
             lines = path.read_text(errors="ignore").splitlines()[:25]
@@ -245,6 +316,17 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     "matched_field": "Header: CLS Data Acquisition",
                     "matched": True,
                 }
+            elif "pncbm:" in head or "PNC_CAT" in path.name:
+                return {
+                    "format": "CLS@APS PNC-CAT ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "CLS@APS - CLS, Canada",
+                    "facility": "CLS",
+                    "country": "Canada",
+                    "matched_signature": "CLS_PNCCAT_DAT",
+                    "matched_field": "Header: pncbm",
+                    "matched": True,
+                }
             elif "APS 10BM" in head or "MRCAT_XAFS" in head:
                 return {
                     "format": "MRCAT XAFS ASCII",
@@ -256,7 +338,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     "matched_field": "Header: APS 10BM",
                     "matched": True,
                 }
-            elif "13IDE:" in head:
+            elif "13IDE:" in head or "13BM" in head or "13BMA:" in head:
                 return {
                     "format": "XDI Epics StepScan",
                     "plugin": "file_xafs_dat",
@@ -264,18 +346,73 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     "facility": "APS",
                     "country": "USA",
                     "matched_signature": "APS_13IDC_XDI",
-                    "matched_field": "Header: 13IDE:En:Energy.VAL",
+                    "matched_field": "Header: 13IDE / 13BM",
                     "matched": True,
                 }
-            elif "04BM-BMB" in head or "XF:04BM" in head:
+            elif "12BM" in path.name or "12-BM" in head or "CMS" in path.name:
+                return {
+                    "format": "APS 12-BM CMS ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "CMS (12-BM) - APS, USA",
+                    "facility": "APS",
+                    "country": "USA",
+                    "matched_signature": "APS_12BM_CMS",
+                    "matched_field": f"APS 12-BM CMS ({path.name})",
+                    "matched": True,
+                }
+            elif "I0_EH1" in head or "BM08" in path.name or "LISA" in path.name:
+                return {
+                    "format": "ESRF BM08 LISA ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "LISA (BM08) - ESRF, France",
+                    "facility": "ESRF",
+                    "country": "France",
+                    "matched_signature": "ESRF_BM08_LISA",
+                    "matched_field": "Header: I0_EH1 (BM08)",
+                    "matched": True,
+                }
+            elif "SNBL" in path.name or "opd01" in head or "GeO2.dat" in path.name:
+                return {
+                    "format": "ESRF SNBL SPEC ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "SNBL I (BM01) - ESRF, France",
+                    "facility": "ESRF",
+                    "country": "France",
+                    "matched_signature": "ESRF_BM01_SNBL",
+                    "matched_field": "Header: opd01 / SNBL",
+                    "matched": True,
+                }
+            elif "Energy_c1" in head or "PHOENIX" in path.name or "KEITHLEY4_TEY" in head:
+                return {
+                    "format": "SLS PHOENIX ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "Phoenix (X07MB) - SLS, Switzerland",
+                    "facility": "SLS",
+                    "country": "Switzerland",
+                    "matched_signature": "SLS_PHOENIX_DAT",
+                    "matched_field": "Header: Energy_c1 / PHOENIX",
+                    "matched": True,
+                }
+            elif "SSRL" in head or "SSRL" in path.name:
+                return {
+                    "format": "SSRL EXAFS ASCII",
+                    "plugin": "file_xafs_dat",
+                    "beamline": "XAS (BL9-3) - SSRL, USA",
+                    "facility": "SSRL",
+                    "country": "USA",
+                    "matched_signature": "SSRL_BL93_EXAFS",
+                    "matched_field": "Header: SSRL Data Collector",
+                    "matched": True,
+                }
+            elif "04BM-BMB" in head or "XF:04BM" in head or "04BM" in path.name or "GSE/1.0" in head:
                 return {
                     "format": "XDI Epics StepScan",
-                    "plugin": "file_xdi",
+                    "plugin": "file_xafs_dat",
                     "beamline": "XFM (4-BM) - NSLS-II, USA",
                     "facility": "NSLS-II",
                     "country": "USA",
                     "matched_signature": "NSLS2_4BM_XFM",
-                    "matched_field": "Header: XF:04BM-BMB",
+                    "matched_field": "Header: XF:04BM / 04BM",
                     "matched": True,
                 }
             elif "BMM (06BM)" in head or "ISS (8-ID)" in head:
@@ -303,7 +440,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 4. Zeiss Xradia (.xrm, .txrm)
+    # 5. Zeiss Xradia (.xrm, .txrm)
     elif ext in [".xrm", ".txrm"]:
         return {
             "format": "Zeiss Xradia TXRM",

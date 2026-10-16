@@ -19,7 +19,7 @@ with redirect_stdout(sys.stderr):
 
 
 BASE_METHODS = ("open", "normalize", "pca", "cluster", "view", "crop", "dark",
-                "remove_image", "reset", "despike", "align", "export", "inspect_file", "build_stack")
+                "remove_image", "reset", "despike", "align", "export", "inspect_file", "preview_file", "build_stack")
 
 
 class SessionError(ValueError):
@@ -223,6 +223,47 @@ class Session:
             raise SessionError(f"File not found: {path}", "file_error")
         return path
 
+    def preview_file(self, path):
+        """Read-only plugin preview; never replaces the active analysis stack."""
+        from .. import file_plugins
+        path = self._file_path(path)
+        plugin = file_plugins.identify(str(path))
+        if plugin is None:
+            raise SessionError('Unsupported file format', 'unsupported_format')
+        info = self.inspect_file(path)
+        preview = getattr(plugin, 'preview', None)
+        if preview is None:
+            try:
+                stack = self._load_plugin(path, None)
+                arr = stack.absdata if stack.stack4D is None else stack.stack4D
+                if arr.ndim == 2:
+                    first_frame = arr.T
+                elif arr.ndim >= 3:
+                    first_frame = arr[:, :, 0].T
+                else:
+                    raise ValueError('Cannot extract 2D image from stack')
+                result = {
+                    'kind': 'image',
+                    'width': int(first_frame.shape[1]),
+                    'height': int(first_frame.shape[0]),
+                    'values': first_frame.ravel().tolist(),
+                    'shape': [int(stack.n_cols), int(stack.n_rows), int(stack.n_ev)],
+                    'frame_count': int(stack.n_ev),
+                    'metadata': {'fallback': True}
+                }
+            except Exception as exc:
+                raise SessionError('This plugin has no raw preview: ' + str(exc), 'unsupported_format')
+        else:
+            result = preview(str(path))
+        result.update({key: info.get(key) for key in ('path', 'format', 'beamline', 'plugin')})
+        result['beamline'] = result['beamline'] or 'Default'
+        if 'shape' not in result and 'shape' in result.get('metadata', {}):
+            result['shape'] = result['metadata']['shape']
+        if 'frame_count' not in result and 'frame_count' in result.get('metadata', {}):
+            result['frame_count'] = result['metadata']['frame_count']
+        self.protect_inputs((path,))
+        return result
+
     def inspect_file(self, path):
         path = self._file_path(path)
         file_size = path.stat().st_size
@@ -285,6 +326,14 @@ class Session:
             format_name = "CSV"
         elif suf == ".json":
             format_name = "JSON"
+        elif suf == ".dat":
+            format_name = "DAT"
+        elif suf == ".xdi":
+            format_name = "XDI"
+        elif suf == ".txt":
+            format_name = "TXT"
+        else:
+            format_name = suf.lstrip(".").upper() or "Default"
 
         beamline = None
         try:
@@ -340,7 +389,7 @@ class Session:
             except Exception:
                 pass
 
-        res = {"path": str(path), "plugin": plugin.title, "format": format_name, "selections": selections, "file_size": file_size, "beamline": beamline}
+        res = {"path": str(path), "plugin": plugin.title if plugin else "Default", "format": format_name, "selections": selections, "file_size": file_size, "beamline": beamline or "Default"}
         if overall_scan_type:
             res["scan_type"] = overall_scan_type
         if selections and all("shape" in s and s["shape"] == selections[0].get("shape") for s in selections):
@@ -352,14 +401,6 @@ class Session:
         plugin = file_plugins.identify(str(path))
         if plugin is None:
             raise SessionError(f"Unsupported file format: {path.suffix}", "unsupported_format")
-        if path.suffix.lower() in (".tif", ".tiff"):
-            # TIFF rows are y; retain input ordering rather than the legacy reader's
-            # implicit energy sorting. Energies must be supplied by a sidecar.
-            from PIL import Image, ImageSequence
-            with Image.open(path) as image:
-                frames = [np.asarray(frame).T.copy() for frame in ImageSequence.Iterator(image)]
-            energies = np.loadtxt(path.with_suffix(".txt"), comments="*")
-            return self._make_stack(np.stack(frames, axis=2), np.atleast_1d(energies))
         info = self.inspect_file(path)
         available = [row["selection"] for row in info["selections"]]
         if selection is None and available:

@@ -55,6 +55,33 @@ def GetFileStructure(FileName):
     return D
 
 
+def preview(filename):
+    """Return a raw first-frame preview of the SDF scan."""
+    from pathlib import Path
+    import numpy as np
+    parser = HDR_FileParser(filename)
+    definition = parser.hdr['ScanDefinition']
+    region = definition['Regions'][1]
+    paxis = region['PAxis']['Points'][1:]
+    qaxis = region['QAxis']['Points'][1:]
+    files = sorted(Path(filename).parent.glob(Path(filename).stem + '_a*.xim'))
+    if not files:
+        raise ValueError('No XIM image files found for HDR scan')
+    first_img = np.loadtxt(files[0])  # (rows, cols)
+    return {
+        'kind': 'image',
+        'width': int(first_img.shape[1]),
+        'height': int(first_img.shape[0]),
+        'values': np.asarray(first_img, dtype=float).ravel().tolist(),
+        'shape': [len(paxis), len(qaxis), len(files)],
+        'frame_count': len(files),
+        'metadata': {
+            'format': 'SDF',
+            'first_xim': files[0].name
+        }
+    }
+
+
 
 #-----------------------------------------------------------------------
 class HDR_FileParser:
@@ -201,7 +228,13 @@ class HDR_FileParser:
             num_R in range(self.num_regions)]
     else:               # single region image
         DataNames = [[[self.file_path + '_' + Alphabet[num_Ch] + '.xim'] for num_Ch in range(self.num_channels)]]
-    #ToDo: File exist check
+    # Single-energy image stacks retain the numbered image suffix.
+    for region in DataNames:
+        for channel in region:
+            if len(channel) == 1 and not isfile(channel[0]):
+                numbered = splitext(channel[0])[0] + '000.xim'
+                if isfile(numbered):
+                    channel[0] = numbered
     return DataNames
 
 #-----------------------------------------------------------------------
@@ -235,6 +268,8 @@ def read(filename, self, selection=None, JSONstatus=None, *args, **kwargs):
     flag = HDR.hdr['ScanDefinition']['Flags']
     type = HDR.hdr['ScanDefinition']['Type']
     # Handle both old (2-element) and new (3-element) selection format
+    if selection is None:
+        selection = (0, 0)
     if len(selection) == 2:
         region, channel = selection
     else:
@@ -275,7 +310,7 @@ def read(filename, self, selection=None, JSONstatus=None, *args, **kwargs):
     msec = float(HDR.hdr['ScanDefinition']['Dwell'])
     self.data_dwell = numpy.ones((self.n_ev))*msec
 
-    imagestack = numpy.empty((self.n_cols,self.n_rows,self.n_ev), numpy.int32)
+    imagestack = numpy.empty((self.n_cols,self.n_rows,self.n_ev), numpy.float64)
     if linescan: # if linescan load only first existing image and iterate over each row.
         line_img = (numpy.loadtxt(HDR.data_names[region][channel][0], numpy.int32).T)
         if q_axis['Name'] == "Energy": # if horizontal, transpose matrix
@@ -284,19 +319,15 @@ def read(filename, self, selection=None, JSONstatus=None, *args, **kwargs):
             imagestack[:, :, i] = row
     else: # no linescan
         for i in range(len(HDR.data_names[region][channel])):
-            try:
-                imagestack[:,:,i] = numpy.loadtxt(HDR.data_names[region][channel][i], numpy.int32).T
-            except ValueError:
-                print("Aborted stack or XIMs with inconsistent dimensions.")
-                #imagestack[:,:,i] = numpy.nan
-            except IOError:
-                print("Image file no. "+str(i)+" not found.")
-                #imagestack[:,:,i] = numpy.nan
+            imagestack[:,:,i] = numpy.loadtxt(HDR.data_names[region][channel][i], ndmin=2).T
     self.absdata = numpy.empty((self.n_cols,self.n_rows, self.n_ev))
 
     self.absdata = numpy.reshape(imagestack, (self.n_cols,self.n_rows, self.n_ev), order='F')
 
     self.fill_h5_struct_from_stk()
+    self.data_struct.exchange.x_units = p_axis.get('Unit', 'um')
+    self.data_struct.exchange.y_units = q_axis.get('Unit', 'um')
+    self.data_struct.exchange.energy_units = stack_axis.get('Unit', 'eV')
     return
 
 #-----------------------------------------------------------------------

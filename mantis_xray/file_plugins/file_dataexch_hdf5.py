@@ -59,11 +59,43 @@ def GetFileStructure(FileName):
     return None
 
 
+def preview(filename):
+    """Return a raw first-frame detector preview of the Data Exchange file."""
+    with h5py.File(filename, 'r') as f:
+        if 'exchange' in f and 'data' in f['exchange']:
+            d = f['exchange/data']
+            if d.ndim == 3:
+                frame = d[:, :, 0].T
+                return {
+                    'kind': 'image',
+                    'width': int(frame.shape[1]),
+                    'height': int(frame.shape[0]),
+                    'values': np.asarray(frame, dtype=float).ravel().tolist(),
+                    'shape': list(d.shape),
+                    'frame_count': int(d.shape[2]),
+                    'metadata': {'format': 'Data Exchange HDF5'}
+                }
+            elif d.ndim == 2:
+                frame = d[()].T
+                return {
+                    'kind': 'image',
+                    'width': int(frame.shape[1]),
+                    'height': int(frame.shape[0]),
+                    'values': np.asarray(frame, dtype=float).ravel().tolist(),
+                    'shape': list(d.shape) + [1],
+                    'frame_count': 1,
+                    'metadata': {'format': 'Data Exchange HDF5'}
+                }
+        raise ValueError('No previewable exchange dataset found in file')
+
+
 #-----------------------------------------------------------------------
 def read(filename, stack_object, selection=None, *args, **kwargs):
     """ToDo: .attrs returns a list in py2 and a set in py3! .attrs and .keys() need to be wrapped in list()"""
     have4d = 0
 
+    # Read into this stack, not the legacy module-level shared descriptors.
+    data_struct = stack_object.data_struct
     #new_stack = data_stack.data(data_struct)
     # Open HDF5 file
     f = h5py.File(filename, 'r')
@@ -74,6 +106,8 @@ def read(filename, stack_object, selection=None, *args, **kwargs):
     data_struct.implements = ds[...]
     ds = f['version']
     data_struct.version = ds[...]
+    version = np.asarray(data_struct.version).reshape(-1)[0]
+    data_struct.version = version.decode('utf-8') if isinstance(version, bytes) else str(version)
 
     stack_object.have_dimscale = 0
 
@@ -480,6 +514,10 @@ def read(filename, stack_object, selection=None, *args, **kwargs):
 
     stack_object.i0data = data_struct.spectromicroscopy.normalization.white_spectrum
     stack_object.evi0 = data_struct.spectromicroscopy.normalization.white_spectrum_energy
+    if stack_object.i0data is not None and stack_object.evi0 is not None:
+        order = np.argsort(stack_object.evi0, kind='stable')
+        stack_object.evi0 = np.asarray(stack_object.evi0)[order]
+        stack_object.i0data = np.asarray(stack_object.i0data)[order]
 
     stack_object.data_dwell = np.ones((stack_object.n_ev))
     stack_object.i0_dwell = np.ones((stack_object.n_ev))

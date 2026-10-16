@@ -14,6 +14,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var error: String?
     @Published var inspection: String?
     @Published var inspectionInfo: FileInspectionInfo?
+    @Published private(set) var filePreview: FilePreview?
     @Published var selectedChannelKey: String = "auto"
     @Published var openAsOpticalDensity = false
     @Published var selectedImage = 0
@@ -49,6 +50,7 @@ final class WorkspaceModel: ObservableObject {
     @Published var importFilePath = "" {
         didSet {
             if oldValue != importFilePath {
+                filePreview = nil
                 importSelection = ""
                 inspection = nil
                 inspectionInfo = nil
@@ -64,7 +66,7 @@ final class WorkspaceModel: ObservableObject {
         }
     }
     var displayFormatName: String? {
-        if let format = inspectionInfo?.format?.trimmingCharacters(in: .whitespacesAndNewlines), !format.isEmpty {
+        if let format = (filePreview?.format ?? inspectionInfo?.format)?.trimmingCharacters(in: .whitespacesAndNewlines), !format.isEmpty {
             return format
         }
         let suffix = URL(fileURLWithPath: importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)).pathExtension.lowercased()
@@ -77,11 +79,11 @@ final class WorkspaceModel: ObservableObject {
         case "csv": return "CSV"
         case "json": return "JSON"
         default:
-            return importFileFormat != "all" ? importFileFormat.uppercased() : nil
+            return importFileFormat != "all" ? importFileFormat.uppercased() : "Default"
         }
     }
     var displayBeamlineName: String {
-        if let beamline = inspectionInfo?.beamline?.trimmingCharacters(in: .whitespacesAndNewlines), !beamline.isEmpty {
+        if let beamline = (filePreview?.beamline ?? inspectionInfo?.beamline)?.trimmingCharacters(in: .whitespacesAndNewlines), !beamline.isEmpty {
             return beamline
         }
         return "Default"
@@ -479,6 +481,10 @@ final class WorkspaceModel: ObservableObject {
         run("hello")
     }
     func run(_ method: String, _ params: [String: JSONValue] = [:]) {
+        if filePreview != nil && !["hello", "inspect_file", "preview_file", "open", "build_stack"].contains(method) {
+            error = "Read-only preview; spectral analysis is unavailable."
+            return
+        }
         guard !busy, !preview, let client else { return }
         guard method == "hello" || supports(method) else { error = "This engine does not advertise \(method)."; return }
         busy = true; error = nil; status = "Running \(method)…"; lastMethod = method
@@ -489,6 +495,8 @@ final class WorkspaceModel: ObservableObject {
                 guard operationID == id, !Task.isCancelled else { return }
                 if method == "hello" {
                     handshake = try JSONDecoder().decode(EngineHello.self, from: data)
+                } else if method == "preview_file" {
+                    acceptPreview(try FilePreview.decode(data))
                 } else if method == "inspect_file" {
                     inspection = Self.pretty(data)
                     if let decoded = try? JSONDecoder().decode(FileInspectionInfo.self, from: data) {
@@ -510,7 +518,19 @@ final class WorkspaceModel: ObservableObject {
             if operationID == id { busy = false; operation = nil }
         }
     }
+    func acceptPreview(_ value: FilePreview) {
+        snapshot = nil; stackView = nil; results.removeAll()
+        rois.removeAll(); selectedROIIndex = nil; rectangle = nil; polygon = nil; pendingPixel = nil
+        inspection = nil; inspectionInfo = nil
+        filePreview = value; section = .load
+    }
+    func previewFile() {
+        let path = importFilePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty else { return }
+        run("preview_file", ["path": .string(path)])
+    }
     func accept(_ next: Snapshot, method: String, target: WorkflowSection) {
+        filePreview = nil
         if snapshot?.theta_index != next.theta_index { results.removeAll() }
         snapshot = next; energyIndex = next.energy_index; thetaIndex = next.theta_index ?? 0
         // The engine owns current-data semantics. The import checkbox belongs to
@@ -545,6 +565,7 @@ final class WorkspaceModel: ObservableObject {
         operation = nil; clearSession(); busy = false
     }
     private func clearSession() {
+        filePreview = nil
         snapshot = nil; results.removeAll(); handshake = nil; rectangle = nil; polygon = nil; pendingPixel = nil; inspection = nil; inspectionInfo = nil; selectedChannelKey = "auto"
         stackView = nil; selectedImage = 0; energyIndex = 0; thetaIndex = 0; display = "intensity"; viewport = nil; zoomLevel = 1; engineView = .stack
         interactionPoint = nil

@@ -167,21 +167,24 @@ def GetFileStructure(filename, plugin=None):
 
 def identify(filename):
     """
-    Cycle through plugins until finding one that claims to understand the file format.
-    First it tries those claiming corresponding file extensions, followed by all other plugins until an appropriate plugin is found.
+    Match the extension case-insensitively, then verify each candidate's schema.
+    An optional identify_priority resolves specific versus generic readers;
+    equal-priority matches raise ValueError instead of depending on load order.
     """
     print("Identifying file:", filename, "...", end=' ')
-    ext = os.path.splitext(filename)[1]
-    flag = [True]*len(plugins)
-    for i,P in enumerate(plugins):
-        if '*'+ext in P.extension:
-            if P.identify(filename):
-                return P
-            elif flag[i] == True: #if plugin returns False, e.g. dataexch_hdf5 does not match, try the next plugin and find the same extension
-                flag[i] = False
-                continue
-            else:
-                break
-    print("Error! unknown file type.")
-    return None
+    ext = os.path.splitext(filename)[1].lower()
+    matches = [plugin for plugin in plugins
+               if '*' + ext in [suffix.lower() for suffix in plugin.extension]
+               and plugin.identify(filename)]
+    if not matches:
+        print("Error! unknown file type.")
+        return None
+    # Specific schema adapters may explicitly outrank a generic reader.
+    # Equal-priority matches are an ambiguity, never a registration-order tie.
+    priority = max(getattr(plugin, 'identify_priority', 0) for plugin in matches)
+    best = [plugin for plugin in matches
+            if getattr(plugin, 'identify_priority', 0) == priority]
+    if len(best) != 1:
+        raise ValueError("Ambiguous file schema: " + ', '.join(sorted(plugin.title for plugin in best)))
+    return best[0]
 

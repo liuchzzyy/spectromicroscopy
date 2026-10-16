@@ -49,15 +49,36 @@ def identify(filename):
 
 def read(FileName,stack_object,selection=(0,0), json=None,  *args, **kwargs):
     D = GetFileStructure(FileName)
+    if not D:
+        raise ValueError('No NXstxm spectromicroscopy entry found')
     entry = list(D.keys())[selection[0]]
+    if D[entry].definition != 'NXstxm':
+        with h5py.File(FileName, 'r') as source:
+            group = source[entry]
+            if 'DIFFABS' in group and 'timescan' in entry.lower():
+                reason = 'DIFFABS timescan: time is not a photon-energy axis'
+            elif 'SWING' in group:
+                reason = 'SWING scattering: detector images are not sample-space energy spectra'
+            else:
+                reason = 'entry is not NXstxm spectromicroscopy'
+        raise ValueError('Unsupported NeXus acquisition: ' + reason)
     detector = list(D[entry].keys())[selection[1]] #[counter0, ...]
     normalize = []
     if D[entry].norm_data is not None:
         normalize = list(D[entry].norm_data.keys())
     normalize.append('fallback')
     normalize.insert(0, 'none')
-    normalize = normalize[selection[2]]
+    normalize = normalize[selection[2] if len(selection) > 2 else 0]
     F = h5py.File(FileName, 'r')
+    group = F[entry][detector]
+    scan_type = perhaps_decode(group['stxm_scan_type'][0]) if 'stxm_scan_type' in group else ''
+    if 'focus' in scan_type.lower():
+        F.close()
+        raise ValueError('Unsupported focus scan: zone-plate position is not photon energy')
+    units = {}
+    for name in ('energy', 'photon_energy', 'sample_x', 'sample_y'):
+        if name in group:
+            units[name] = perhaps_decode(group[name].attrs.get('units', 'unknown'))
     if 'energy' in list(F[entry][detector]):
         stack_object.ev = numpy.array(F[entry][detector]['energy'])
     elif 'photon_energy' in list(F[entry][detector]):
@@ -135,6 +156,10 @@ def read(FileName,stack_object,selection=(0,0), json=None,  *args, **kwargs):
     F.close()
 
     stack_object.fill_h5_struct_from_stk()
+    exchange = stack_object.data_struct.exchange
+    exchange.energy_units = units.get('energy', units.get('photon_energy', 'unknown'))
+    exchange.x_units = units.get('sample_x', 'unknown').replace('μm', 'um').replace('µm', 'um')
+    exchange.y_units = units.get('sample_y', 'unknown').replace('μm', 'um').replace('µm', 'um')
 
 
 def GetFileStructure(FileName):
@@ -176,3 +201,32 @@ def GetFileStructure(FileName):
     else:
         return D
 
+
+def preview(filename):
+    """Return a raw first-frame detector preview of the NeXus file."""
+    with h5py.File(filename, 'r') as f:
+        for entry in f:
+            if not hasattr(f[entry], 'attrs'):
+                continue
+            if f[entry].attrs.get('NX_class') in (b'NXentry', 'NXentry', u'NXentry'):
+                for data_name in f[entry]:
+                    group = f[entry][data_name]
+                    if not hasattr(group, 'attrs'):
+                        continue
+                    if group.attrs.get('NX_class') in (b'NXdata', 'NXdata', u'NXdata') and 'data' in group:
+                        d = group['data']
+                        if d.ndim >= 2:
+                            slice_2d = d[(0,) * (d.ndim - 2) + (slice(None), slice(None))]
+                            return {
+                                'kind': 'image',
+                                'width': int(slice_2d.shape[1]),
+                                'height': int(slice_2d.shape[0]),
+                                'values': numpy.asarray(slice_2d, dtype=float).ravel().tolist(),
+                                'shape': list(d.shape),
+                                'frame_count': int(d.shape[0]) if d.ndim > 2 else 1,
+                                'metadata': {
+                                    'entry': entry,
+                                    'data_group': data_name,
+                                }
+                            }
+        raise ValueError('No previewable NXdata dataset found in NeXus file')

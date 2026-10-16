@@ -29,9 +29,9 @@ write_types = ['image','stack','results']
 
 def identify(filename):
     try:
-        # Open Tiff file
-        img = Image.open(filename)
-        return True
+        import tifffile
+        with tifffile.TiffFile(filename) as tif:
+            return bool(tif.pages)
     except:
         return False
 
@@ -41,73 +41,74 @@ def GetFileStructure(FileName):
 
 #-----------------------------------------------------------------------
 def read(filename, self, selection=None, *args, **kwargs):
+    """Read calibrated TIFF exports without inventing an energy axis.
 
-    img = Image.open(filename)
-
-    imgstack = []
-
-    i = 0
-    while True:
-        try:
-            img.seek(i)
-            i += 1
-            imgstack.append(np.array((img)))
-        except EOFError:
-            break
-
-    imgstack = np.array((imgstack))
-
-    imgstack = np.transpose(imgstack, axes=(1,2,0))
-
-    self.n_cols = imgstack.shape[0]
-    self.n_rows = imgstack.shape[1]
-    self.n_ev = imgstack.shape[2]
-
-    print('File {0} dims: [{1},{2},{3}]'.format(filename, self.n_cols, self.n_rows, self.n_ev))
-
-    pixelsize = 1
-    #Since we do not have a scanning microscope we fill the x_dist and y_dist from pixel_size
-    self.x_dist = np.arange(float(self.n_cols))*pixelsize
-    self.y_dist = np.arange(float(self.n_rows))*pixelsize
-
-    #Read energies from file
-    basename, extension = os.path.splitext(filename)
-    engfilename = basename+'.txt'
-    f = open(str(engfilename),'r')
-
-    elist = []
-
-    for line in f:
-        if line.startswith("*"):
-            pass
+    The named sidecars are export-schema conventions, not beamline guesses.
+    Ni_eng_list.txt is the TXM-XANES keV convention. Other supported lists
+    use eV. Spatial calibration is unknown: coordinates remain pixels.
+    """
+    from pathlib import Path
+    import tifffile
+    path = Path(filename)
+    sidecars = [(path.with_suffix('.txt'), 1.0),
+                (path.parent / 'Energy.txt', 1.0),
+                (path.parent / 'energy_list_corr.txt', 1.0),
+                (path.parent / 'Ni_eng_list.txt', 1000.0)]
+    found = [(p, factor) for p, factor in sidecars if p.is_file()]
+    if not found:
+        raise ValueError('TIFF has no energy calibration sidecar; cannot load as an energy stack')
+    if len(found) != 1:
+        raise ValueError('Ambiguous TIFF energy calibration sidecars')
+    source, factor = found[0]
+    with source.open() as stream:
+        energies = np.loadtxt((line for line in stream if not line.lstrip().startswith('*')), ndmin=1)
+    if energies.ndim != 1 or not energies.size or not np.all(np.isfinite(energies)) or np.any(energies <= 0):
+        raise ValueError('Invalid TIFF energy calibration')
+    energies = energies * factor
+    with tifffile.TiffFile(path) as tif:
+        raw = tif.asarray()
+    if raw.ndim == 2 and energies.size == 1:
+        cube = raw.T[:, :, None]
+    elif raw.ndim == 3:
+        candidates = [i for i, size in enumerate(raw.shape) if size == energies.size]
+        if len(candidates) != 1:
+            raise ValueError('TIFF energy axis is ambiguous or does not match calibration')
+        axis = candidates[0]
+        if axis == 0:
+            cube = raw.transpose(2, 1, 0)  # page, row, column
+        elif axis == 2 and source.name == 'Energy.txt':
+            cube = raw.transpose(1, 0, 2)  # aXis export: row, column, energy
         else:
-            e = float(line)
-            elist.append(e)
-
-    self.ev = np.array(elist)
-
-    f.close()
-
-
-    msec = np.ones((self.n_ev))
-
-    self.data_dwell = msec
-
-    self.absdata = imgstack
-
-    #Check if the energies are consecutive, if they are not sort the data
-    sort = 0
-    for i in range(self.n_ev - 1):
-        if self.ev[i] > self.ev[i+1]:
-            sort = 1
-            break
-    if sort == 1:
-        sortind = np.argsort(self.ev)
-        self.ev = self.ev[sortind]
-        self.absdata = self.absdata[:,:,sortind]
-
-
+            raise ValueError('Unsupported TIFF energy axis layout')
+    else:
+        raise ValueError('TIFF dimensions do not match energy calibration')
+    self.absdata = cube
+    self.n_cols, self.n_rows, self.n_ev = cube.shape
+    self.ev = energies  # preserve acquisition order, including repeats
+    self.x_dist = np.arange(self.n_cols, dtype=float)
+    self.y_dist = np.arange(self.n_rows, dtype=float)
+    self.data_dwell = np.full(self.n_ev, np.nan)  # not recorded
     self.fill_h5_struct_from_stk()
+    self.data_struct.exchange.energy_units = 'eV'
+    self.data_struct.exchange.x_units = 'pixel'
+    self.data_struct.exchange.y_units = 'pixel'
+
+def preview(filename):
+    """Preview detector pixels without requiring or inventing energy calibration."""
+    import tifffile
+    with tifffile.TiffFile(filename) as tif:
+        image = tif.pages[0].asarray()
+        shape = list(tif.series[0].shape)
+        axes = tif.series[0].axes
+        count = len(tif.pages)
+    if image.ndim != 2:
+        raise ValueError('TIFF first page is not a scalar detector image')
+    return {'kind': 'image', 'width': int(image.shape[1]),
+            'height': int(image.shape[0]), 'values': image.ravel().tolist(),
+            'shape': shape, 'frame_count': count,
+            'metadata': {'source_axes': axes, 'spatial_unit': 'pixel',
+                         'calibration': 'raw detector preview; no energy axis inferred'}}
+
 
 def read_tif_info(filename):
     img = Image.open(filename)

@@ -123,6 +123,9 @@ struct WorkspaceView: View {
     }
     private var mainWorkspaceContent: some View {
         VStack(spacing: Theme.sectionSpacing) {
+            if let preview = model.filePreview {
+                FilePreviewView(preview: preview)
+            } else {
             sourceSummary
             HStack(alignment: .top, spacing: Theme.sectionSpacing) {
                 imageCard.frame(maxWidth: .infinity, alignment: .topLeading)
@@ -137,6 +140,7 @@ struct WorkspaceView: View {
                 FileInspectionCardView(model: model, rawJson: inspection)
             }
             resultDetails
+            }
         }.padding(Theme.contentInset)
     }
     private var selectedEnergy: Double? {
@@ -880,7 +884,7 @@ struct LoadDataInspector: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(tr("File Path")).font(.caption2).foregroundStyle(.secondary)
                             HStack {
-                                TextField(tr("Select .hdr, .h5, or .npz file"), text: $model.importFilePath)
+                                TextField(tr("Select a supported data file"), text: $model.importFilePath)
                                     .textFieldStyle(.roundedBorder)
                                 Button {
                                     if let chosen = model.chooseFiles()?.first {
@@ -911,7 +915,7 @@ struct LoadDataInspector: View {
                                 Spacer()
                                 if let format = model.displayFormatName {
                                     HStack(spacing: 4) {
-                                        Text(format)
+                                        Text(tr(format))
                                             .font(.caption2.weight(.semibold))
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
@@ -984,6 +988,9 @@ struct LoadDataInspector: View {
                         .accessibilityIdentifier("load.selectionParameters")
 
                         HStack(spacing: 8) {
+                            Button(tr("Preview File")) { model.previewFile() }
+                                .disabled(model.importFilePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.busy || !model.supports("preview_file"))
+                                .accessibilityIdentifier("load.previewFile")
                             Button(tr("Inspect File")) {
                                 model.inspectFile()
                             }

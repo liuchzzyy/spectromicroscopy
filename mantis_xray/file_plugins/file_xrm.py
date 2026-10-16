@@ -48,25 +48,109 @@ def identify(filename):
 
 
 
+def preview(filename):
+    """Read only the first raw Xradia image, including rotation acquisitions.
+
+    Pixels are row-major (y, x), not normalized, aligned or reconstructed.
+    Rotation angles remain angles; sparse/invalid Energy streams are metadata,
+    never used to pretend a tomography acquisition is an energy stack.
+    """
+    from mantis_xray.file_plugins.file_nexus_scan import _result, _safe
+
+    ole = OleFileIO(os.fspath(filename))
+    try:
+        def values(name, dtype='<f4'):
+            path = 'ImageInfo/' + name
+            if not ole.exists(path):
+                return np.array([], dtype=dtype)
+            return np.frombuffer(ole.openstream(path).read(), dtype=dtype)
+
+        count_name = 'NoOfImages' if ole.exists('ImageInfo/NoOfImages') else 'ImagesTaken'
+        count = int(values(count_name, '<u4')[0])
+        nx = int(values('ImageWidth', '<u4')[0])
+        ny = int(values('ImageHeight', '<u4')[0])
+        if min(count, nx, ny) <= 0:
+            raise ValueError('Invalid Xradia image dimensions/count')
+        datatype = int(values('DataType', '<u4')[0])
+        dtype = {5: '<u2', 10: '<f4'}.get(datatype)
+        if dtype is None:
+            raise ValueError('Unsupported Xradia pixel data type: %s' % datatype)
+        image = np.frombuffer(ole.openstream('ImageData1/Image1').read(), dtype=dtype).reshape(ny, nx)
+        angles = values('Angles')[:count]
+        rotation = angles.size == count and count > 1 and np.ptp(angles) > 1e-4
+        pixel = values('PixelSize')
+        calibrated = bool(pixel.size and np.isfinite(pixel[0]) and pixel[0] > 0)
+        step = float(pixel[0]) if calibrated else 1.
+        axes = {key: dict(name=key, units='um' if calibrated else 'pixel',
+                          values=_safe(np.arange(size) * step), calibrated=calibrated,
+                          description='Relative image coordinate; origin is first pixel')
+                for key, size in [('x', nx), ('y', ny)]}
+        axes['frame'] = dict(name='rotation_angle' if rotation else 'frame_index',
+                             units='degree' if rotation else 'index',
+                             values=_safe(angles) if rotation else list(range(count)))
+        return _result(image, axes, dict(
+            scientific_kind='tomography_projection' if rotation else 'xray_image',
+            shape=[count, ny, nx], frame_count=count, frame_index=0,
+            dataset_path='ImageData1/Image1', pixel_size_um=step if calibrated else None,
+            angles_degree=_safe(angles), energy_stream_eV=_safe(values('Energy')),
+            exposure_time_s=_safe(values('ExpTimes')[:count]),
+            interpretation='Raw first projection/image; no flat-field correction, alignment or reconstruction.'))
+    finally:
+        ole.close()
+
+
 def GetFileStructure(FileName):
     return None
 
 
 #-----------------------------------------------------------------------
 def read(filename, self, selection=None, *args, **kwargs):
+    """Load an Xradia image/energy series, rejecting rotation series."""
+    ole = OleFileIO(os.fspath(filename))
+    try:
+        def values(name, dtype='<f4'):
+            return np.frombuffer(ole.openstream('ImageInfo/' + name).read(), dtype=dtype).copy()
 
-    basename, extension = os.path.splitext(filename)
-
-    if extension == '.xrm':
-        read_xrm(filename, self)
-    elif extension == '.txrm':
-        read_txrm(filename, self)
-        
+        count_name = 'NoOfImages' if ole.exists('ImageInfo/NoOfImages') else 'ImagesTaken'
+        count = int(values(count_name, '<u4')[0])
+        nx = int(values('ImageWidth', '<u4')[0])
+        ny = int(values('ImageHeight', '<u4')[0])
+        if ole.exists('ImageInfo/Angles'):
+            angles = values('Angles')[:count]
+            if count > 1 and np.ptp(angles) > 1e-4:
+                raise ValueError('Xradia tomography rotation series is not an energy stack')
+        energy = values('Energy')[:count]
+        if energy.size != count or not np.all(np.isfinite(energy)) or np.any(energy <= 0):
+            raise ValueError('Missing or invalid Xradia energy calibration')
+        datatype = int(values('DataType', '<u4')[0])
+        dtype = {5: '<u2', 10: '<f4'}.get(datatype)
+        if dtype is None:
+            raise ValueError('Unsupported Xradia pixel data type: %s' % datatype)
+        cube = np.empty((nx, ny, count), dtype=dtype)
+        for i in range(1, count + 1):
+            stream = 'ImageData%d/Image%d' % ((i - 1) // 100 + 1, i)
+            pixels = np.frombuffer(ole.openstream(stream).read(), dtype=dtype)
+            cube[:, :, i - 1] = pixels.reshape(ny, nx).T
+        pixel_size = float(values('PixelSize')[0])
+        if not np.isfinite(pixel_size) or pixel_size <= 0:
+            raise ValueError('Invalid Xradia pixel size')
+        dwell = values('ExpTimes')[:count]
+        if dwell.size != count:
+            raise ValueError('Xradia exposure count does not match images')
+    finally:
+        ole.close()
+    self.n_cols, self.n_rows, self.n_ev = cube.shape
+    self.absdata = cube
+    self.ev = energy
+    self.x_dist = np.arange(nx, dtype=float) * pixel_size
+    self.y_dist = np.arange(ny, dtype=float) * pixel_size
+    self.data_dwell = dwell
     self.fill_h5_struct_from_stk()
+    self.data_struct.exchange.energy_units = 'eV'
+    self.data_struct.exchange.x_units = 'um'
+    self.data_struct.exchange.y_units = 'um'
 
-    return
-    
- 
+
 #-----------------------------------------------------------------------
 def read_xrm_fileinfo(filename, readimgdata = False): 
     

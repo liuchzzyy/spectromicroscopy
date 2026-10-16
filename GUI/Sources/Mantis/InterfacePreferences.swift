@@ -67,6 +67,9 @@ final class InterfacePreferences: ObservableObject {
 /// UI copy only. Dataset paths, scientific names, and arbitrary engine results are opaque.
 enum InterfaceText {
     private static let chinese: [String: String] = [
+        "Preview File": "预览文件", "File preview": "文件预览",
+        "Read-only preview; spectral analysis is unavailable.": "只读预览；光谱分析不可用。",
+        "Preview frame": "预览帧", "Select a supported data file": "选择支持的数据文件",
         "WORKFLOW": "工作流程", "Load Data": "导入数据", "Preprocess": "预处理", "PCA / Clusterings": "PCA / 聚类",
         "Version Management": "版本管理", "Inspect native GUI and independent CLI releases.": "查看原生 GUI 与独立 CLI 的版本及更新。",
         "Manage startup and window behavior.": "管理开机启动与关闭窗口行为。",
