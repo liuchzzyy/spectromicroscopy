@@ -23,7 +23,7 @@ FILE_SIGNATURES: List[Dict[str, Any]] = _PAYLOAD["file_signatures"]
 
 def resolve_beamline(raw: Optional[str]) -> str:
     """Lookup a raw beamline string (e.g. 'PolLux', 'X07DA', 'MISTRAL', 'BL09', 'BL08U1-A')
-    and return the standardized '线站缩写/ID - 设施, 国家' label.
+    and return the standardized '线站缩写/ID - 设施' label.
     """
     if not raw:
         return "Default"
@@ -81,7 +81,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     return {
                         "format": "MISTRAL Cryo-TXM HDF5",
                         "plugin": "file_mistral_hdf5",
-                        "beamline": "MISTRAL (BL09) - ALBA, Spain",
+                        "beamline": "MISTRAL (BL09) - ALBA",
                         "facility": "ALBA",
                         "country": "Spain",
                         "matched_signature": "ALBA_MISTRAL_HDF5",
@@ -94,7 +94,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     return {
                         "format": "NeXus NXstxm HDF5",
                         "plugin": "file_nexus_hdf5",
-                        "beamline": "I08-1 - DLS, UK",
+                        "beamline": "I08-1 - DLS",
                         "facility": "DLS",
                         "country": "UK",
                         "matched_signature": "DIAMOND_I08_NXSTXM",
@@ -110,7 +110,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                             return {
                                 "format": "NeXus Scan HDF5",
                                 "plugin": "file_nexus_scan",
-                                "beamline": "DIFFABS - SOLEIL, France",
+                                "beamline": "DIFFABS - SOLEIL",
                                 "facility": "SOLEIL",
                                 "country": "France",
                                 "matched_signature": "SOLEIL_DIFFABS_NEXUS",
@@ -121,7 +121,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                             return {
                                 "format": "NeXus Scan HDF5",
                                 "plugin": "file_nexus_scan",
-                                "beamline": "SWING - SOLEIL, France",
+                                "beamline": "SWING - SOLEIL",
                                 "facility": "SOLEIL",
                                 "country": "France",
                                 "matched_signature": "SOLEIL_SWING_NEXUS",
@@ -136,7 +136,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                                     return {
                                         "format": "NeXus NXstxm HDF5",
                                         "plugin": "file_nexus_hdf5",
-                                        "beamline": "PolLux (X07DA) - SLS, Switzerland",
+                                        "beamline": "PolLux (X07DA) - SLS",
                                         "facility": "SLS",
                                         "country": "Switzerland",
                                         "matched_signature": "SLS_POLLUX_NXSTXM",
@@ -147,7 +147,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                                     return {
                                         "format": "NeXus NXstxm HDF5",
                                         "plugin": "file_nexus_hdf5",
-                                        "beamline": "HERMES - SOLEIL, France",
+                                        "beamline": "HERMES - SOLEIL",
                                         "facility": "SOLEIL",
                                         "country": "France",
                                         "matched_signature": "SOLEIL_HERMES_NXSTXM",
@@ -164,7 +164,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                         return {
                             "format": "Data Exchange HDF5",
                             "plugin": "file_dataexch_hdf5",
-                            "beamline": "I14 - DLS, UK",
+                            "beamline": "I14 - DLS",
                             "facility": "DLS",
                             "country": "UK",
                             "matched_signature": "DIAMOND_I14_DATAEXCH",
@@ -174,7 +174,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                     return {
                         "format": "Data Exchange TXM HDF5",
                         "plugin": "file_dataexch_hdf5",
-                        "beamline": "TXM (32-ID) - APS, USA",
+                        "beamline": "TXM (32-ID) - APS",
                         "facility": "APS",
                         "country": "USA",
                         "matched_signature": "APS_32ID_DATAEXCH",
@@ -190,7 +190,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                         return {
                             "format": "ALS Micro-CT HDF5",
                             "plugin": "file_hdf5",
-                            "beamline": "8.3.2 - ALS, USA",
+                            "beamline": "8.3.2 - ALS",
                             "facility": "ALS",
                             "country": "USA",
                             "matched_signature": "ALS_832_MICROCT",
@@ -210,7 +210,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "aXis2000 SDF (HDR + XIM)",
                     "plugin": "file_sdf",
-                    "beamline": "DEMETER - SOLARIS, Poland",
+                    "beamline": "DEMETER - SOLARIS",
                     "facility": "SOLARIS",
                     "country": "Poland",
                     "matched_signature": "SOLARIS_DEMETER_SDF",
@@ -221,7 +221,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "aXis2000 SDF (HDR + XIM)",
                     "plugin": "file_sdf",
-                    "beamline": "STXM (5.3.2) - ALS, USA",
+                    "beamline": "STXM (5.3.2) - ALS",
                     "facility": "ALS",
                     "country": "USA",
                     "matched_signature": "ALS_532_SDF",
@@ -232,7 +232,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "aXis2000 SDF (HDR + XIM)",
                     "plugin": "file_sdf",
-                    "beamline": "SoftiMAX - MAX IV, Sweden",
+                    "beamline": "SoftiMAX - MAX IV",
                     "facility": "MAX IV",
                     "country": "Sweden",
                     "matched_signature": "MAXIV_SOFTIMAX_SDF",
@@ -243,7 +243,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "aXis2000 SDF (HDR + XIM)",
                     "plugin": "file_sdf",
-                    "beamline": "STXM (11.0.2.2) - ALS, USA",
+                    "beamline": "STXM (11.0.2.2) - ALS",
                     "facility": "ALS",
                     "country": "USA",
                     "matched_signature": "ALS_1102_SDF",
@@ -259,7 +259,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
             return {
                 "format": "TIFF Stack",
                 "plugin": "file_tif",
-                "beamline": "STXM (11.0.2.2) - ALS, USA",
+                "beamline": "STXM (11.0.2.2) - ALS",
                 "facility": "ALS",
                 "country": "USA",
                 "matched_signature": "ALS_1102_TIFF",
@@ -270,7 +270,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
             return {
                 "format": "TIFF Image",
                 "plugin": "file_tif",
-                "beamline": "I18 - DLS, UK",
+                "beamline": "I18 - DLS",
                 "facility": "DLS",
                 "country": "UK",
                 "matched_signature": "DIAMOND_I18_TIFF",
@@ -281,7 +281,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
             return {
                 "format": "TXM-XANES TIFF Stack",
                 "plugin": "file_tif",
-                "beamline": "HXN (3-ID) - NSLS-II, USA",
+                "beamline": "HXN (3-ID) - NSLS-II",
                 "facility": "NSLS-II",
                 "country": "USA",
                 "matched_signature": "NSLS2_HXN_TIFF",
@@ -298,7 +298,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "KEK-PF EXAFS ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "XRD (BL-12C) - PF, Japan",
+                    "beamline": "XRD (BL-12C) - PF",
                     "facility": "PF",
                     "country": "Japan",
                     "matched_signature": "PF_BL12C_EXAFS",
@@ -309,7 +309,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "CLS Data Acquisition ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "HXMA (06ID-1) - CLS, Canada",
+                    "beamline": "HXMA (06ID-1) - CLS",
                     "facility": "CLS",
                     "country": "Canada",
                     "matched_signature": "CLS_06ID1_HXMA",
@@ -320,7 +320,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "CLS@APS PNC-CAT ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "CLS@APS - CLS, Canada",
+                    "beamline": "CLS@APS - CLS",
                     "facility": "CLS",
                     "country": "Canada",
                     "matched_signature": "CLS_PNCCAT_DAT",
@@ -331,7 +331,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "MRCAT XAFS ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "XAS (10-BM-B) - APS, USA",
+                    "beamline": "XAS (10-BM-B) - APS",
                     "facility": "APS",
                     "country": "USA",
                     "matched_signature": "APS_10BM_MRCAT",
@@ -342,7 +342,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "XDI Epics StepScan",
                     "plugin": "file_xafs_dat",
-                    "beamline": "XAS (13-ID-C) - APS, USA",
+                    "beamline": "XAS (13-ID-C) - APS",
                     "facility": "APS",
                     "country": "USA",
                     "matched_signature": "APS_13IDC_XDI",
@@ -353,7 +353,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "APS 12-BM CMS ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "CMS (12-BM) - APS, USA",
+                    "beamline": "CMS (12-BM) - APS",
                     "facility": "APS",
                     "country": "USA",
                     "matched_signature": "APS_12BM_CMS",
@@ -364,7 +364,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "ESRF BM08 LISA ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "LISA (BM08) - ESRF, France",
+                    "beamline": "LISA (BM08) - ESRF",
                     "facility": "ESRF",
                     "country": "France",
                     "matched_signature": "ESRF_BM08_LISA",
@@ -375,7 +375,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "ESRF SNBL SPEC ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "SNBL I (BM01) - ESRF, France",
+                    "beamline": "SNBL I (BM01) - ESRF",
                     "facility": "ESRF",
                     "country": "France",
                     "matched_signature": "ESRF_BM01_SNBL",
@@ -386,7 +386,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "SLS PHOENIX ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "Phoenix (X07MB) - SLS, Switzerland",
+                    "beamline": "Phoenix (X07MB) - SLS",
                     "facility": "SLS",
                     "country": "Switzerland",
                     "matched_signature": "SLS_PHOENIX_DAT",
@@ -397,7 +397,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "SSRL EXAFS ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "XAS (BL9-3) - SSRL, USA",
+                    "beamline": "XAS (BL9-3) - SSRL",
                     "facility": "SSRL",
                     "country": "USA",
                     "matched_signature": "SSRL_BL93_EXAFS",
@@ -408,7 +408,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "XDI Epics StepScan",
                     "plugin": "file_xafs_dat",
-                    "beamline": "XFM (4-BM) - NSLS-II, USA",
+                    "beamline": "XFM (4-BM) - NSLS-II",
                     "facility": "NSLS-II",
                     "country": "USA",
                     "matched_signature": "NSLS2_4BM_XFM",
@@ -419,7 +419,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "XDI BlueSky ASCII",
                     "plugin": "file_xafs_dat",
-                    "beamline": "BMM (6-BM) - NSLS-II, USA",
+                    "beamline": "BMM (6-BM) - NSLS-II",
                     "facility": "NSLS-II",
                     "country": "USA",
                     "matched_signature": "NSLS2_6BM_BMM",
@@ -430,7 +430,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
                 return {
                     "format": "SOLEIL ROCK Quick-EXAFS",
                     "plugin": "file_xafs_txt",
-                    "beamline": "ROCK - SOLEIL, France",
+                    "beamline": "ROCK - SOLEIL",
                     "facility": "SOLEIL",
                     "country": "France",
                     "matched_signature": "SOLEIL_ROCK_QEXAFS",
@@ -445,7 +445,7 @@ def inspect_data_file(filepath: Union[str, Path]) -> Dict[str, Any]:
         return {
             "format": "Zeiss Xradia TXRM",
             "plugin": "file_xrm",
-            "beamline": "TXRM (Xradia) - Laboratory, USA",
+            "beamline": "TXRM (Xradia) - Laboratory",
             "facility": "Laboratory",
             "country": "USA",
             "matched_signature": "ZEISS_XRADIA_TXRM",

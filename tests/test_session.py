@@ -727,5 +727,5 @@ def test_inspect_file_resolves_mistral_and_signature_beamline():
         info = session.dispatch("inspect_file", {"path": str(mistral_path)})
         assert info["format"] == "HDF5"
         assert info["plugin"] == "MISTRAL-ALBA"
-        assert info["beamline"] == "MISTRAL (BL09) - ALBA, Spain"
+        assert info["beamline"] == "MISTRAL (BL09) - ALBA"
 

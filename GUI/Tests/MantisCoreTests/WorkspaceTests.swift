@@ -378,7 +378,7 @@ final class WorkspaceTests: XCTestCase {
             "path": "/data/mistral.hdf5",
             "plugin": "MISTRAL-ALBA",
             "format": "HDF5",
-            "beamline": "MISTRAL (BL09) - ALBA, Spain",
+            "beamline": "MISTRAL (BL09) - ALBA",
             "file_size": 870535680,
             "scan_type": "TXM",
             "selections": [
@@ -390,7 +390,7 @@ final class WorkspaceTests: XCTestCase {
         model.importFilePath = "/data/mistral.hdf5"
         model.inspectionInfo = mistralInfo
         XCTAssertEqual(model.displayFormatName, "HDF5")
-        XCTAssertEqual(model.displayBeamlineName, "MISTRAL (BL09) - ALBA, Spain")
+        XCTAssertEqual(model.displayBeamlineName, "MISTRAL (BL09) - ALBA")
     }
     func testSelectedROIHistogramDecodesAndRejectsIncompleteMetadata() throws {
         let image: [String: Any] = ["title": "Intensity", "width": 2, "height": 2,
