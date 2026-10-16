@@ -18,25 +18,6 @@ __pycache__/
 /dist/
 /build/
 
-# Local backup of the pre-migration Qt code; safe to delete at any time
-/old/
-
-# Measurement data must never be committed: a single stack is hundreds of MB.
-# Keep test data outside the repository, or add it here deliberately per file.
-*.hdf5
-*.h5
-*.nxs
-*.stk
-*.xrm
-*.txrm
-*.ncb
-*.sm
-*.npz
-# Local beamline source files are never part of the public code history.
-/docs/Sol_240309145/
-/docs/Datasets/
-/test/
-
 # Editor/agent atomic-write intermediates
 .hermes-tmp.*
 

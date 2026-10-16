@@ -1,0 +1,185 @@
+
+ScanDefinition = { Label = "532_150718052.hdr"; Type = "NEXAFS Image Scan"; Flags = "Image Stack"; Dwell = 1.5;
+	Regions = (1,
+{
+			PAxis = { Name = "Sample X"; Unit = "um"; Min = -7665.2793; Max = -7655.7793; Dir = 1;
+				Points = (127, -7665.2793, -7665.2045, -7665.1297, -7665.0549, -7664.9801, -7664.9053, -7664.8305, -7664.7557, -7664.6809, -7664.6061, -7664.5313, -7664.4565, -7664.3817, -7664.3069, -7664.2321, -7664.1573, -7664.0824, -7664.0076, -7663.9328, -7663.8580, -7663.7832, -7663.7084, -7663.6336, -7663.5588, -7663.4840, -7663.4092, -7663.3344, -7663.2596, -7663.1848, -7663.1100, -7663.0352, -7662.9604, -7662.8856, -7662.8108, -7662.7360, -7662.6612, -7662.5864, -7662.5116, -7662.4368, -7662.3620, -7662.2872, -7662.2124, -7662.1376, -7662.0628, -7661.9880, -7661.9132, -7661.8384, -7661.7636, -7661.6887, -7661.6139, -7661.5391, -7661.4643, -7661.3895, -7661.3147, -7661.2399, -7661.1651, -7661.0903, -7661.0155, -7660.9407, -7660.8659, -7660.7911, -7660.7163, -7660.6415, -7660.5667, -7660.4919, -7660.4171, -7660.3423, -7660.2675, -7660.1927, -7660.1179, -7660.0431, -7659.9683, -7659.8935, -7659.8187, -7659.7439, -7659.6691, -7659.5943, -7659.5195, -7659.4447, -7659.3699, -7659.2950, -7659.2202, -7659.1454, -7659.0706, -7658.9958, -7658.9210, -7658.8462, -7658.7714, -7658.6966, -7658.6218, -7658.5470, -7658.4722, -7658.3974, -7658.3226, -7658.2478, -7658.1730, -7658.0982, -7658.0234, -7657.9486, -7657.8738, -7657.7990, -7657.7242, -7657.6494, -7657.5746, -7657.4998, -7657.4250, -7657.3502, -7657.2754, -7657.2006, -7657.1258, -7657.0510, -7656.9762, -7656.9013, -7656.8265, -7656.7517, -7656.6769, -7656.6021, -7656.5273, -7656.4525, -7656.3777, -7656.3029, -7656.2281, -7656.1533, -7656.0785, -7656.0037, -7655.9289, -7655.8541);
+};
+
+			QAxis = { Name = "Sample Y"; Unit = "um"; Min = -860.0445; Max = -849.0445; Dir = 1;
+				Points = (147, -860.0445, -859.9697, -859.8948, -859.8200, -859.7452, -859.6704, -859.5955, -859.5207, -859.4459, -859.3710, -859.2962, -859.2214, -859.1465, -859.0717, -858.9969, -858.9221, -858.8472, -858.7724, -858.6976, -858.6227, -858.5479, -858.4731, -858.3982, -858.3234, -858.2486, -858.1738, -858.0989, -858.0241, -857.9493, -857.8744, -857.7996, -857.7248, -857.6499, -857.5751, -857.5003, -857.4255, -857.3506, -857.2758, -857.2010, -857.1261, -857.0513, -856.9765, -856.9016, -856.8268, -856.7520, -856.6772, -856.6023, -856.5275, -856.4527, -856.3778, -856.3030, -856.2282, -856.1533, -856.0785, -856.0037, -855.9289, -855.8540, -855.7792, -855.7044, -855.6295, -855.5547, -855.4799, -855.4050, -855.3302, -855.2554, -855.1806, -855.1057, -855.0309, -854.9561, -854.8812, -854.8064, -854.7316, -854.6567, -854.5819, -854.5071, -854.4323, -854.3574, -854.2826, -854.2078, -854.1329, -854.0581, -853.9833, -853.9084, -853.8336, -853.7588, -853.6840, -853.6091, -853.5343, -853.4595, -853.3846, -853.3098, -853.2350, -853.1601, -853.0853, -853.0105, -852.9357, -852.8608, -852.7860, -852.7112, -852.6363, -852.5615, -852.4867, -852.4118, -852.3370, -852.2622, -852.1874, -852.1125, -852.0377, -851.9629, -851.8880, -851.8132, -851.7384, -851.6635, -851.5887, -851.5139, -851.4391, -851.3642, -851.2894, -851.2146, -851.1397, -851.0649, -850.9901, -850.9152, -850.8404, -850.7656, -850.6908, -850.6159, -850.5411, -850.4663, -850.3914, -850.3166, -850.2418, -850.1669, -850.0921, -850.0173, -849.9425, -849.8676, -849.7928, -849.7180, -849.6431, -849.5683, -849.4935, -849.4186, -849.3438, -849.2690, -849.1942, -849.1193);
+};
+});
+
+	StackAxis = { Name = "Energy"; Unit = "eV"; Min = 395; Max = 550; Dir = 1;
+		Points = (85, 395.0000, 395.8000, 396.6000, 397.4000, 398.2000, 399.0000, 399.8000, 400.2320, 400.6640, 401.0960, 401.5280, 401.9600, 402.3920, 402.8240, 403.2560, 403.6880, 404.1200, 404.5520, 404.9840, 405.4160, 405.8480, 406.2800, 406.7120, 407.1440, 407.5760, 408.0080, 408.8000, 409.6120, 410.4240, 411.2360, 412.0480, 412.8600, 413.6720, 414.4840, 415.2960, 416.1080, 416.9200, 417.7320, 418.5440, 419.3560, 420.1680, 420.9800, 421.7920, 422.6040, 525.0000, 525.7500, 526.5000, 527.2500, 528.0000, 528.8000, 529.2000, 529.6000, 530.0000, 530.4000, 530.8000, 531.2000, 531.6000, 532.0000, 532.4000, 532.8000, 533.2000, 533.6000, 534.0000, 534.4000, 534.8000, 535.2000, 535.6000, 536.0000, 536.8000, 537.6250, 538.4500, 539.2750, 540.1000, 540.9250, 541.7500, 542.5750, 543.4000, 544.2250, 545.0500, 545.8750, 546.7000, 547.5250, 548.3500, 549.1750, 550.0000);
+};
+
+	Channels = (1,
+{ Name = "Counter0"; Unit = "counts";});
+};
+ Time = "2015 July 18 16:24:53"; BeamFeedback = true; ShutterAutomatic = true;
+Channels = (1,
+{ ID = 0; Type = 0; Name = "Counter0"; Controller = 0; DeviceNumber = 0; UnitName = "counts"; LinearCoefficient = 1; ConstantCoefficient = 0; ProcessString = "";});
+
+Monochromator = { Name = "Monochromator"; LastPosition = -3521.627; Status = 1; Type = 6; ControllerID = 91; Vel = 300;};
+
+EntranceSlit = { Name = "EntranceSlit"; LastPosition = 61.978; Status = 0; Type = 1; ControllerID = 92; Vel = 200;};
+
+ExitVSlit = { Name = "ExitSlitY"; LastPosition = 29.659; Status = 0; Type = 1; ControllerID = 94; Vel = 100;};
+
+ExitHSlit = { Name = "ExitSlitX"; LastPosition = 29.659; Status = 0; Type = 1; ControllerID = 93; Vel = 100;};
+
+Harmonics = { Name = "Harmonics"; LastPosition = 0; Status = 0; Type = 2; ControllerID = 0; Vel = 0;};
+
+EPU_Z = { Name = "EPUPhase"; LastPosition = 0; Status = 0; Type = 2; ControllerID = 0; Vel = 0;};
+
+Grating = { Name = "Grating"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+Cff = { Name = "Cff"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+SampleFineX = { Name = "SampleX"; LastPosition = -7655.2987; Status = 0; Type = 0; ControllerID = 41; Vel = 3;};
+
+SampleFineY = { Name = "SampleY"; LastPosition = -860.04488; Status = 0; Type = 0; ControllerID = 42; Vel = 3;};
+
+SampleFineZ = { Name = "Fine Z"; LastPosition = 40.008547; Status = 0; Type = 1; ControllerID = 51; Vel = 1;};
+
+SampleCoarseX = { Name = "CoarseX"; LastPosition = -7659.5; Status = 0; Type = 1; ControllerID = 82; Vel = 2;};
+
+SampleCoarseY = { Name = "CoarseY"; LastPosition = -887.3; Status = 0; Type = 1; ControllerID = 83; Vel = 0.6;};
+
+SampleCoarseZ = { Name = "CoarseZ"; LastPosition = 679.2; Status = 0; Type = 1; ControllerID = 95; Vel = 2000;};
+
+ZonePlateZ = { Name = "ZonePlateZ"; LastPosition = -1608.6361; Status = 0; Type = 3; ControllerID = 81; Vel = 1000;};
+
+OSAX = { Name = "OSAX"; LastPosition = 0.1; Status = 0; Type = 1; ControllerID = 87; Vel = 400;};
+
+OSAY = { Name = "OSAY"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 88; Vel = 400;};
+
+DetectorX = { Name = "DetectorX"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 84; Vel = 0.2;};
+
+DetectorY = { Name = "DetectorY"; LastPosition = -0; Status = 0; Type = 1; ControllerID = 96; Vel = 0.2;};
+
+DetectorZ = { Name = "DetectorZ"; LastPosition = 1; Status = 0; Type = 1; ControllerID = 0; Vel = 45;};
+
+AUX1 = { Name = "MiniRotation"; LastPosition = 80; Status = 0; Type = 1; ControllerID = 0; Vel = 50;};
+
+AUX2 = { Name = "Rotation"; LastPosition = 100; Status = 0; Type = 1; ControllerID = 0; Vel = 20;};
+
+AUX3 = { Name = "AUX3"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+AUX4 = { Name = "AUX4"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+AUX5 = { Name = "AUX5"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+AUX6 = { Name = "AUX6"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+AUX7 = { Name = "AUX7"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+AUX8 = { Name = "AUX8"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+
+EPUGap = { Name = "EPU Gap"; LastPosition = 0; Status = 0; Type = 0; ControllerID = 0; Vel = 200;};
+
+EPU_Polarization = { Name = "EPU_Polarization"; LastPosition = 0; Status = 0; Type = 2; ControllerID = 0; Vel = 0;};
+
+AUX9 = { Name = ""; LastPosition = 0; Status = 0; Type = 0; ControllerID = 0; Vel = 0;};
+
+AUX10 = { Name = "AUX10"; LastPosition = 0; Status = 0; Type = 1; ControllerID = 0; Vel = 0;};
+ StorageRingCurrent = 500.4; PMT_CounterDivider = 10; Ao = 310; Defocus = 31;
+ImageScan = { ScanType = "Image (Line - unidirection)"; Stage = "Automatic"; Shutter = "Automatic"; Interferometry = "On"; SingleEnergy = false;
+	EnergyRegions = (6,
+{ StartEnergy = 395; EndEnergy = 399; Range = 4; Step = 0.8; Points = 6; DwellTime = 1.5;},
+{ StartEnergy = 399.8; EndEnergy = 408; Range = 8.2; Step = 0.432; Points = 20; DwellTime = 1.5;},
+{ StartEnergy = 408.8; EndEnergy = 422.6; Range = 13.8; Step = 0.812; Points = 18; DwellTime = 1.5;},
+{ StartEnergy = 525; EndEnergy = 528; Range = 3; Step = 0.75; Points = 5; DwellTime = 1.5;},
+{ StartEnergy = 528.8; EndEnergy = 536; Range = 7.2; Step = 0.4; Points = 19; DwellTime = 1.5;},
+{ StartEnergy = 536.8; EndEnergy = 550; Range = 13.2; Step = 0.825; Points = 17; DwellTime = 1.5;});
+ PointDelay = 0.06; LineDelay = 40; AccelDist = 0.477; MultipleRegions = false;
+	SpatialRegions = (1,
+{ CentreXPos = -7660.5293; CentreYPos = -854.5445; XRange = 9.5; YRange = 11; XStep = 0.0748; YStep = 0.0748; XPoints = 127; YPoints = 147; SquareRegion = false; SquarePixels = false;});
+};
+Image000_0 = {StorageRingCurrent = 500.36; Energy = -3521.63; Time = "2015 Jul 18 16:25:42"; ZP_dest= -1609.03; ZP_error = 0.39;};
+Image001_0 = {StorageRingCurrent = 500.42; Energy = -3514.51; Time = "2015 Jul 18 16:26:30"; ZP_dest= -1612.91; ZP_error = 0.28;};
+Image002_0 = {StorageRingCurrent = 500.24; Energy = -3507.42; Time = "2015 Jul 18 16:27:18"; ZP_dest= -1616.80; ZP_error = 0.36;};
+Image003_0 = {StorageRingCurrent = 500.07; Energy = -3500.36; Time = "2015 Jul 18 16:28:06"; ZP_dest= -1620.69; ZP_error = 0.25;};
+Image004_0 = {StorageRingCurrent = 500.36; Energy = -3493.32; Time = "2015 Jul 18 16:28:55"; ZP_dest= -1624.58; ZP_error = 0.44;};
+Image005_0 = {StorageRingCurrent = 500.36; Energy = -3486.32; Time = "2015 Jul 18 16:29:43"; ZP_dest= -1628.46; ZP_error = 0.53;};
+Image006_0 = {StorageRingCurrent = 500.53; Energy = -3479.35; Time = "2015 Jul 18 16:30:31"; ZP_dest= -1632.35; ZP_error = 0.41;};
+Image007_0 = {StorageRingCurrent = 500.18; Energy = -3475.59; Time = "2015 Jul 18 16:31:20"; ZP_dest= -1634.44; ZP_error = 0.41;};
+Image008_0 = {StorageRingCurrent = 500.49; Energy = -3471.84; Time = "2015 Jul 18 16:32:08"; ZP_dest= -1636.55; ZP_error = 0.51;};
+Image009_0 = {StorageRingCurrent = 500.24; Energy = -3468.11; Time = "2015 Jul 18 16:32:56"; ZP_dest= -1638.64; ZP_error = 0.31;};
+Image010_0 = {StorageRingCurrent = 500.24; Energy = -3464.37; Time = "2015 Jul 18 16:33:45"; ZP_dest= -1640.74; ZP_error = 0.31;};
+Image011_0 = {StorageRingCurrent = 500.06; Energy = -3460.65; Time = "2015 Jul 18 16:34:33"; ZP_dest= -1642.84; ZP_error = 0.31;};
+Image012_0 = {StorageRingCurrent = 500.39; Energy = -3456.93; Time = "2015 Jul 18 16:35:21"; ZP_dest= -1644.94; ZP_error = 0.21;};
+Image013_0 = {StorageRingCurrent = 500.64; Energy = -3453.22; Time = "2015 Jul 18 16:36:10"; ZP_dest= -1647.04; ZP_error = 0.20;};
+Image014_0 = {StorageRingCurrent = 500.46; Energy = -3449.53; Time = "2015 Jul 18 16:36:58"; ZP_dest= -1649.14; ZP_error = 0.30;};
+Image015_0 = {StorageRingCurrent = 500.67; Energy = -3445.84; Time = "2015 Jul 18 16:37:46"; ZP_dest= -1651.24; ZP_error = 0.10;};
+Image016_0 = {StorageRingCurrent = 500.49; Energy = -3442.15; Time = "2015 Jul 18 16:38:35"; ZP_dest= -1653.34; ZP_error = 0.10;};
+Image017_0 = {StorageRingCurrent = 500.49; Energy = -3438.47; Time = "2015 Jul 18 16:39:23"; ZP_dest= -1655.43; ZP_error = -0.00;};
+Image018_0 = {StorageRingCurrent = 500.61; Energy = -3434.81; Time = "2015 Jul 18 16:40:11"; ZP_dest= -1657.53; ZP_error = 0.10;};
+Image019_0 = {StorageRingCurrent = 500.61; Energy = -3431.14; Time = "2015 Jul 18 16:40:59"; ZP_dest= -1659.63; ZP_error = -0.00;};
+Image020_0 = {StorageRingCurrent = 500.43; Energy = -3427.49; Time = "2015 Jul 18 16:41:48"; ZP_dest= -1661.73; ZP_error = -0.01;};
+Image021_0 = {StorageRingCurrent = 500.30; Energy = -3423.85; Time = "2015 Jul 18 16:42:36"; ZP_dest= -1663.83; ZP_error = -0.11;};
+Image022_0 = {StorageRingCurrent = 500.30; Energy = -3420.21; Time = "2015 Jul 18 16:43:24"; ZP_dest= -1665.93; ZP_error = -0.11;};
+Image023_0 = {StorageRingCurrent = 500.00; Energy = -3416.58; Time = "2015 Jul 18 16:44:13"; ZP_dest= -1668.03; ZP_error = -0.31;};
+Image024_0 = {StorageRingCurrent = 500.73; Energy = -3412.96; Time = "2015 Jul 18 16:45:01"; ZP_dest= -1670.13; ZP_error = -0.41;};
+Image025_0 = {StorageRingCurrent = 500.61; Energy = -3409.34; Time = "2015 Jul 18 16:45:49"; ZP_dest= -1672.23; ZP_error = -0.51;};
+Image026_0 = {StorageRingCurrent = 500.18; Energy = -3402.74; Time = "2015 Jul 18 16:46:37"; ZP_dest= -1676.07; ZP_error = -0.66;};
+Image027_0 = {StorageRingCurrent = 500.12; Energy = -3396.00; Time = "2015 Jul 18 16:47:26"; ZP_dest= -1680.02; ZP_error = -0.92;};
+Image028_0 = {StorageRingCurrent = 500.12; Energy = -3389.28; Time = "2015 Jul 18 16:48:14"; ZP_dest= -1683.96; ZP_error = -0.97;};
+Image029_0 = {StorageRingCurrent = 500.24; Energy = -3382.58; Time = "2015 Jul 18 16:49:02"; ZP_dest= -1687.91; ZP_error = -1.13;};
+Image030_0 = {StorageRingCurrent = 500.24; Energy = -3375.92; Time = "2015 Jul 18 16:49:50"; ZP_dest= -1691.85; ZP_error = -1.19;};
+Image031_0 = {StorageRingCurrent = 500.06; Energy = -3369.28; Time = "2015 Jul 18 16:50:39"; ZP_dest= -1695.80; ZP_error = -1.34;};
+Image032_0 = {StorageRingCurrent = 500.18; Energy = -3362.66; Time = "2015 Jul 18 16:51:27"; ZP_dest= -1699.74; ZP_error = -1.49;};
+Image033_0 = {StorageRingCurrent = 500.43; Energy = -3356.08; Time = "2015 Jul 18 16:52:16"; ZP_dest= -1703.69; ZP_error = 0.75;};
+Image034_0 = {StorageRingCurrent = 500.30; Energy = -3349.52; Time = "2015 Jul 18 16:53:04"; ZP_dest= -1707.63; ZP_error = 0.79;};
+Image035_0 = {StorageRingCurrent = 500.49; Energy = -3342.97; Time = "2015 Jul 18 16:53:53"; ZP_dest= -1711.58; ZP_error = 0.94;};
+Image036_0 = {StorageRingCurrent = 500.51; Energy = -3336.46; Time = "2015 Jul 18 16:54:41"; ZP_dest= -1715.53; ZP_error = 0.79;};
+Image037_0 = {StorageRingCurrent = 500.37; Energy = -3329.98; Time = "2015 Jul 18 16:55:29"; ZP_dest= -1719.46; ZP_error = 0.83;};
+Image038_0 = {StorageRingCurrent = 500.36; Energy = -3323.52; Time = "2015 Jul 18 16:56:17"; ZP_dest= -1723.41; ZP_error = 0.77;};
+Image039_0 = {StorageRingCurrent = 500.07; Energy = -3317.09; Time = "2015 Jul 18 16:57:06"; ZP_dest= -1727.36; ZP_error = 0.72;};
+Image040_0 = {StorageRingCurrent = 500.30; Energy = -3310.67; Time = "2015 Jul 18 16:57:54"; ZP_dest= -1731.31; ZP_error = 0.67;};
+Image041_0 = {StorageRingCurrent = 500.55; Energy = -3304.29; Time = "2015 Jul 18 16:58:43"; ZP_dest= -1735.25; ZP_error = 0.71;};
+Image042_0 = {StorageRingCurrent = 500.23; Energy = -3297.92; Time = "2015 Jul 18 16:59:31"; ZP_dest= -1739.19; ZP_error = 0.66;};
+Image043_0 = {StorageRingCurrent = 500.43; Energy = -3291.59; Time = "2015 Jul 18 17:00:19"; ZP_dest= -1743.14; ZP_error = 0.70;};
+Image044_0 = {StorageRingCurrent = 500.43; Energy = -2649.57; Time = "2015 Jul 18 17:01:09"; ZP_dest= -2240.61; ZP_error = -0.33;};
+Image045_0 = {StorageRingCurrent = 500.30; Energy = -2645.79; Time = "2015 Jul 18 17:01:57"; ZP_dest= -2244.25; ZP_error = -0.09;};
+Image046_0 = {StorageRingCurrent = 500.06; Energy = -2642.02; Time = "2015 Jul 18 17:02:46"; ZP_dest= -2247.90; ZP_error = -0.14;};
+Image047_0 = {StorageRingCurrent = 500.06; Energy = -2638.26; Time = "2015 Jul 18 17:03:34"; ZP_dest= -2251.54; ZP_error = -0.09;};
+Image048_0 = {StorageRingCurrent = 500.45; Energy = -2634.52; Time = "2015 Jul 18 17:04:22"; ZP_dest= -2255.18; ZP_error = -0.06;};
+Image049_0 = {StorageRingCurrent = 500.24; Energy = -2630.53; Time = "2015 Jul 18 17:05:11"; ZP_dest= -2259.07; ZP_error = 0.03;};
+Image050_0 = {StorageRingCurrent = 500.56; Energy = -2628.54; Time = "2015 Jul 18 17:05:59"; ZP_dest= -2261.02; ZP_error = -0.02;};
+Image051_0 = {StorageRingCurrent = 500.56; Energy = -2626.56; Time = "2015 Jul 18 17:06:47"; ZP_dest= -2262.95; ZP_error = 0.02;};
+Image052_0 = {StorageRingCurrent = 500.29; Energy = -2624.58; Time = "2015 Jul 18 17:07:36"; ZP_dest= -2264.90; ZP_error = -0.14;};
+Image053_0 = {StorageRingCurrent = 500.67; Energy = -2622.60; Time = "2015 Jul 18 17:08:24"; ZP_dest= -2266.84; ZP_error = 0.01;};
+Image054_0 = {StorageRingCurrent = 500.54; Energy = -2620.62; Time = "2015 Jul 18 17:09:12"; ZP_dest= -2268.78; ZP_error = 0.05;};
+Image055_0 = {StorageRingCurrent = 500.24; Energy = -2618.65; Time = "2015 Jul 18 17:10:00"; ZP_dest= -2270.73; ZP_error = -0.11;};
+Image056_0 = {StorageRingCurrent = 500.79; Energy = -2616.67; Time = "2015 Jul 18 17:10:49"; ZP_dest= -2272.68; ZP_error = -0.06;};
+Image057_0 = {StorageRingCurrent = 500.31; Energy = -2614.71; Time = "2015 Jul 18 17:11:37"; ZP_dest= -2274.61; ZP_error = -0.02;};
+Image058_0 = {StorageRingCurrent = 500.31; Energy = -2612.74; Time = "2015 Jul 18 17:12:25"; ZP_dest= -2276.56; ZP_error = 0.02;};
+Image059_0 = {StorageRingCurrent = 500.01; Energy = -2610.79; Time = "2015 Jul 18 17:13:14"; ZP_dest= -2278.50; ZP_error = 0.06;};
+Image060_0 = {StorageRingCurrent = 500.18; Energy = -2608.83; Time = "2015 Jul 18 17:14:02"; ZP_dest= -2280.44; ZP_error = 0.11;};
+Image061_0 = {StorageRingCurrent = 500.00; Energy = -2606.87; Time = "2015 Jul 18 17:14:50"; ZP_dest= -2282.39; ZP_error = -0.04;};
+Image062_0 = {StorageRingCurrent = 500.42; Energy = -2604.92; Time = "2015 Jul 18 17:15:38"; ZP_dest= -2284.33; ZP_error = 0.10;};
+Image063_0 = {StorageRingCurrent = 500.17; Energy = -2602.97; Time = "2015 Jul 18 17:16:27"; ZP_dest= -2286.27; ZP_error = 0.04;};
+Image064_0 = {StorageRingCurrent = 500.51; Energy = -2601.02; Time = "2015 Jul 18 17:17:15"; ZP_dest= -2288.22; ZP_error = -0.02;};
+Image065_0 = {StorageRingCurrent = 500.46; Energy = -2599.08; Time = "2015 Jul 18 17:18:03"; ZP_dest= -2290.16; ZP_error = 0.02;};
+Image066_0 = {StorageRingCurrent = 500.35; Energy = -2597.13; Time = "2015 Jul 18 17:18:51"; ZP_dest= -2292.11; ZP_error = 0.07;};
+Image067_0 = {StorageRingCurrent = 500.05; Energy = -2595.19; Time = "2015 Jul 18 17:19:40"; ZP_dest= -2294.05; ZP_error = 0.02;};
+Image068_0 = {StorageRingCurrent = 500.44; Energy = -2591.32; Time = "2015 Jul 18 17:20:28"; ZP_dest= -2297.94; ZP_error = 0.10;};
+Image069_0 = {StorageRingCurrent = 500.44; Energy = -2587.35; Time = "2015 Jul 18 17:21:17"; ZP_dest= -2301.94; ZP_error = 0.11;};
+Image070_0 = {StorageRingCurrent = 500.37; Energy = -2583.39; Time = "2015 Jul 18 17:22:05"; ZP_dest= -2305.95; ZP_error = 0.02;};
+Image071_0 = {StorageRingCurrent = 500.55; Energy = -2579.44; Time = "2015 Jul 18 17:22:53"; ZP_dest= -2309.95; ZP_error = 0.02;};
+Image072_0 = {StorageRingCurrent = 500.55; Energy = -2575.49; Time = "2015 Jul 18 17:23:41"; ZP_dest= -2313.97; ZP_error = 0.13;};
+Image073_0 = {StorageRingCurrent = 500.38; Energy = -2571.57; Time = "2015 Jul 18 17:24:30"; ZP_dest= -2317.98; ZP_error = 0.14;};
+Image074_0 = {StorageRingCurrent = 500.54; Energy = -2567.65; Time = "2015 Jul 18 17:25:18"; ZP_dest= -2321.99; ZP_error = 0.15;};
+Image075_0 = {StorageRingCurrent = 500.08; Energy = -2563.75; Time = "2015 Jul 18 17:26:07"; ZP_dest= -2325.99; ZP_error = 0.06;};
+Image076_0 = {StorageRingCurrent = 500.55; Energy = -2559.85; Time = "2015 Jul 18 17:26:55"; ZP_dest= -2330.00; ZP_error = 0.07;};
+Image077_0 = {StorageRingCurrent = 500.30; Energy = -2555.97; Time = "2015 Jul 18 17:27:43"; ZP_dest= -2334.01; ZP_error = 0.27;};
+Image078_0 = {StorageRingCurrent = 500.61; Energy = -2552.10; Time = "2015 Jul 18 17:28:32"; ZP_dest= -2338.02; ZP_error = 0.28;};
+Image079_0 = {StorageRingCurrent = 500.49; Energy = -2548.24; Time = "2015 Jul 18 17:29:20"; ZP_dest= -2342.03; ZP_error = 0.49;};
+Image080_0 = {StorageRingCurrent = 500.24; Energy = -2544.40; Time = "2015 Jul 18 17:30:08"; ZP_dest= -2346.03; ZP_error = 0.69;};
+Image081_0 = {StorageRingCurrent = 500.48; Energy = -2540.56; Time = "2015 Jul 18 17:30:56"; ZP_dest= -2350.04; ZP_error = 0.61;};
+Image082_0 = {StorageRingCurrent = 500.12; Energy = -2536.74; Time = "2015 Jul 18 17:31:45"; ZP_dest= -2354.05; ZP_error = 0.71;};
+Image083_0 = {StorageRingCurrent = 500.55; Energy = -2532.93; Time = "2015 Jul 18 17:32:34"; ZP_dest= -2358.06; ZP_error = 0.52;};
+Image084_0 = {StorageRingCurrent = 500.43; Energy = -2529.14; Time = "2015 Jul 18 17:33:22"; ZP_dest= -2362.06; ZP_error = 0.63;};
